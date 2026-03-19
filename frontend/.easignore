@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+android/
+ios/
+.git/
+*.md
+*.log
+test_result.md
+tests/
+__pycache__/
+.env
+.env.local
+.env*.local
