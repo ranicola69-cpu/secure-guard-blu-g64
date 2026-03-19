@@ -10,11 +10,6 @@
         "withoutCredentials": true
       },
       "distribution": "internal"
-    },
-    "production": {
-      "android": {
-        "buildType": "apk"
-      }
     }
   }
 }
