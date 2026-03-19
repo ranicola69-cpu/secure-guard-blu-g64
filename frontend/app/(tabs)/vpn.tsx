@@ -25,14 +25,18 @@ interface VPNServer {
 }
 
 const FREE_VPN_SERVERS: VPNServer[] = [
-  { id: '1', country: 'USA', city: 'New York', dns: '1.1.1.1', protocol: 'DNS-VPN', latency: 45 },
-  { id: '2', country: 'USA', city: 'Los Angeles', dns: '8.8.8.8', protocol: 'DNS-VPN', latency: 38 },
-  { id: '3', country: 'UK', city: 'London', dns: '9.9.9.9', protocol: 'DNS-VPN', latency: 65 },
-  { id: '4', country: 'Germany', city: 'Frankfurt', dns: '208.67.222.222', protocol: 'DNS-VPN', latency: 58 },
-  { id: '5', country: 'Japan', city: 'Tokyo', dns: '1.0.0.1', protocol: 'DNS-VPN', latency: 125 },
-  { id: '6', country: 'Singapore', city: 'Singapore', dns: '149.112.112.112', protocol: 'DNS-VPN', latency: 95 },
-  { id: '7', country: 'Canada', city: 'Toronto', dns: '208.67.220.220', protocol: 'DNS-VPN', latency: 52 },
-  { id: '8', country: 'Australia', city: 'Sydney', dns: '8.8.4.4', protocol: 'DNS-VPN', latency: 180 },
+  { id: '1', country: 'USA', city: 'New York (1)', dns: '1.1.1.1', protocol: 'DNS-VPN', latency: 42 },
+  { id: '2', country: 'USA', city: 'New York (2)', dns: '1.0.0.1', protocol: 'DNS-VPN', latency: 45 },
+  { id: '3', country: 'USA', city: 'Los Angeles', dns: '8.8.8.8', protocol: 'DNS-VPN', latency: 38 },
+  { id: '4', country: 'Canada', city: 'Toronto', dns: '208.67.220.220', protocol: 'DNS-VPN', latency: 52 },
+  { id: '5', country: 'Canada', city: 'Montreal', dns: '149.112.112.112', protocol: 'DNS-VPN', latency: 48 },
+  { id: '6', country: 'Brazil', city: 'São Paulo', dns: '9.9.9.9', protocol: 'DNS-VPN', latency: 85 },
+  { id: '7', country: 'Brazil', city: 'Rio de Janeiro', dns: '149.112.112.9', protocol: 'DNS-VPN', latency: 90 },
+  { id: '8', country: 'UK', city: 'London', dns: '208.67.222.222', protocol: 'DNS-VPN', latency: 65 },
+  { id: '9', country: 'Germany', city: 'Frankfurt', dns: '94.140.14.14', protocol: 'DNS-VPN', latency: 58 },
+  { id: '10', country: 'Japan', city: 'Tokyo', dns: '8.8.4.4', protocol: 'DNS-VPN', latency: 125 },
+  { id: '11', country: 'Singapore', city: 'Singapore', dns: '94.140.15.15', protocol: 'DNS-VPN', latency: 95 },
+  { id: '12', country: 'Australia', city: 'Sydney', dns: '76.76.2.0', protocol: 'DNS-VPN', latency: 180 },
 ];
 
 export default function VPNScreen() {

@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Secure Guard",
-    "slug": "secure-guard-blu-g64",
-    "version": "1.0.0",
+    "slug": "secure-guard",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secureguard",

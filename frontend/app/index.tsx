@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -25,7 +25,7 @@ export default function SplashScreen() {
 
     const timer = setTimeout(() => {
       router.replace('/(tabs)/security');
-    }, 2500);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -46,10 +46,25 @@ export default function SplashScreen() {
         </View>
         <Text style={styles.title}>SECURE GUARD</Text>
         <Text style={styles.subtitle}>Military Grade Security</Text>
+        
         <View style={styles.badge}>
           <Text style={styles.badgeText}>POWERED BY SHIZUKU</Text>
         </View>
+        
+        <View style={styles.developerSection}>
+          <Text style={styles.developerLabel}>Developed by</Text>
+          <Text style={styles.developerName}>Richard Carmen Anicola</Text>
+          <View style={styles.companyBadge}>
+            <Ionicons name="business" size={14} color="#00ff88" />
+            <Text style={styles.companyName}>DPHMS</Text>
+          </View>
+          <Text style={styles.companyFull}>Doctor Power House Mobile Solutions</Text>
+        </View>
       </Animated.View>
+      
+      <View style={styles.footer}>
+        <Text style={styles.versionText}>v1.2.0</Text>
+      </View>
     </View>
   );
 }
@@ -77,7 +92,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#999',
-    marginBottom: 32,
+    marginBottom: 24,
     letterSpacing: 1,
   },
   badge: {
@@ -87,11 +102,55 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#00ff88',
+    marginBottom: 40,
   },
   badgeText: {
     color: '#00ff88',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
+  },
+  developerSection: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  developerLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+  },
+  developerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  companyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#00ff8815',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+    marginBottom: 6,
+  },
+  companyName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00ff88',
+    letterSpacing: 1,
+  },
+  companyFull: {
+    fontSize: 10,
+    color: '#00ff8880',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 40,
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#333',
   },
 });
