@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "secureguard",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dphms.secureguard"
@@ -17,12 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0a"
       },
-      "package": "com.dphms.secureguard",
-      "permissions": [
-        "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.ACCESS_WIFI_STATE"
-      ]
+      "package": "com.dphms.secureguard"
     },
     "web": {
       "bundler": "metro",
@@ -30,27 +24,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "newArchEnabled": true,
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34,
-            "minSdkVersion": 24
-          }
-        }
-      ]
+      "expo-router"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
       "eas": {
         "projectId": "96ef22e1-4227-40ef-babf-53267082794a"
-      },
-      "router": {}
+      }
     },
     "owner": "ranicola"
   }
