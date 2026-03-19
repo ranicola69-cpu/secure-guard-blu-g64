@@ -348,12 +348,34 @@ This project is licensed under the MIT License.
 
 ---
 
+## 👨‍💻 Developer
+
+**Richard Carmen Anicola**
+- Email: richanicola@gmail.com
+- Specialized in Android security and system-level applications
+- Expert in Shizuku framework integration
+
+---
+
+## 💖 Support Development
+
+If you find this app useful, consider supporting development:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/paypalme/95weisland88@gmail.com)
+
+**PayPal:** 95weisland88@gmail.com
+
+Your donations help maintain and improve this free security tool!
+
+---
+
 ## 📞 Support
 
 For issues, questions, or contributions:
-- Open an issue on GitHub
-- Check existing issues for solutions
-- Contribute via pull requests
+- 📧 Email: richanicola@gmail.com
+- 🐛 Open an issue on GitHub
+- 💡 Check existing issues for solutions
+- 🤝 Contribute via pull requests
 
 ---
 
@@ -363,6 +385,16 @@ This app requires system-level access via Shizuku. Use responsibly and at your o
 
 ---
 
-**Built with ❤️ for Blu G64 and Android Security**
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+Copyright (c) 2025 Richard Carmen Anicola
+
+---
+
+**Built with ❤️ by Richard Carmen Anicola**
+
+**For Blu G64 and Android Security**
 
 **Powered by Shizuku | Military Grade Security**
