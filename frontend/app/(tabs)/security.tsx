@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
@@ -23,6 +25,10 @@ export default function SecurityScreen() {
   const [scanning, setScanning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [threats, setThreats] = useState([]);
+  const [enterpriseThreats, setEnterpriseThreats] = useState([]);
+  const [showScanOptions, setShowScanOptions] = useState(false);
+  const [scanType, setScanType] = useState('full');
+  const [showEnterprise, setShowEnterprise] = useState(false);
 
   useEffect(() => {
     initDevice();
@@ -37,6 +43,7 @@ export default function SecurityScreen() {
     setDeviceId(id);
     loadSecurityStatus(id);
     loadThreats(id);
+    loadEnterpriseThreats();
   };
 
   const loadSecurityStatus = async (id: string) => {
@@ -57,10 +64,20 @@ export default function SecurityScreen() {
     }
   };
 
-  const performScan = async () => {
-    setScanning(true);
+  const loadEnterpriseThreats = async () => {
     try {
-      await axios.post(`${API_URL}/api/security/scan?device_id=${deviceId}`);
+      const response = await axios.get(`${API_URL}/api/security/enterprise-threats`);
+      setEnterpriseThreats(response.data);
+    } catch (error) {
+      console.error('Error loading enterprise threats:', error);
+    }
+  };
+
+  const performScan = async (type: string = 'full') => {
+    setScanning(true);
+    setShowScanOptions(false);
+    try {
+      await axios.post(`${API_URL}/api/security/scan?device_id=${deviceId}&scan_type=${type}`);
       await loadSecurityStatus(deviceId);
       await loadThreats(deviceId);
     } catch (error) {
@@ -73,6 +90,7 @@ export default function SecurityScreen() {
     setRefreshing(true);
     await loadSecurityStatus(deviceId);
     await loadThreats(deviceId);
+    await loadEnterpriseThreats();
     setRefreshing(false);
   };
 
@@ -87,12 +105,26 @@ export default function SecurityScreen() {
     return 'THREATS DETECTED';
   };
 
+  const getThreatLevelColor = (level: string) => {
+    const colors: { [key: string]: string } = {
+      critical: '#ff0044',
+      high: '#ff3366',
+      medium: '#ffaa00',
+      low: '#ffcc00',
+    };
+    return colors[level] || '#999';
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Security Dashboard</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Ionicons name="settings-outline" size={24} color="#999" />
+        <TouchableOpacity 
+          style={styles.enterpriseButton}
+          onPress={() => setShowEnterprise(!showEnterprise)}
+        >
+          <Ionicons name="business" size={20} color="#ff3366" />
+          <Text style={styles.enterpriseBadge}>{enterpriseThreats.length}</Text>
         </TouchableOpacity>
       </View>
 
@@ -127,17 +159,96 @@ export default function SecurityScreen() {
           </View>
         </View>
 
-        {/* Scan Button */}
-        <TouchableOpacity
-          style={[styles.scanButton, scanning && styles.scanButtonActive]}
-          onPress={performScan}
-          disabled={scanning}
-        >
-          <Ionicons name="scan" size={24} color="#000" />
-          <Text style={styles.scanButtonText}>
-            {scanning ? 'SCANNING...' : 'SCAN NOW'}
+        {/* Scan Buttons */}
+        <View style={styles.scanButtons}>
+          <TouchableOpacity
+            style={[styles.scanButton, scanning && styles.scanButtonActive]}
+            onPress={() => performScan('full')}
+            disabled={scanning}
+          >
+            <Ionicons name="scan" size={20} color="#000" />
+            <Text style={styles.scanButtonText}>
+              {scanning ? 'SCANNING...' : 'FULL SCAN'}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.scanButton, styles.scanButtonEnterprise, scanning && styles.scanButtonActive]}
+            onPress={() => performScan('enterprise')}
+            disabled={scanning}
+          >
+            <Ionicons name="business" size={20} color="#000" />
+            <Text style={styles.scanButtonText}>ENTERPRISE</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Developer Options */}
+        <View style={styles.developerCard}>
+          <View style={styles.developerHeader}>
+            <Ionicons name="code-slash" size={20} color="#00aaff" />
+            <Text style={styles.developerTitle}>BLU G64 Developer Scanning</Text>
+          </View>
+          <Text style={styles.developerDesc}>
+            Advanced Shizuku-powered scanning for enterprise spyware, bloatware, and system threats
           </Text>
-        </TouchableOpacity>
+          <View style={styles.scanOptions}>
+            <View style={styles.scanOption}>
+              <Text style={styles.scanOptionText}>Scan System Apps</Text>
+              <Switch
+                value={true}
+                trackColor={{ false: '#333', true: '#00ff8840' }}
+                thumbColor="#00ff88"
+              />
+            </View>
+            <View style={styles.scanOption}>
+              <Text style={styles.scanOptionText}>Deep Cache Analysis</Text>
+              <Switch
+                value={true}
+                trackColor={{ false: '#333', true: '#00ff8840' }}
+                thumbColor="#00ff88"
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Enterprise Threats Section */}
+        {showEnterprise && enterpriseThreats.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Enterprise Threats Detected</Text>
+              <View style={styles.criticalBadge}>
+                <Text style={styles.criticalText}>CRITICAL</Text>
+              </View>
+            </View>
+            {enterpriseThreats.map((threat: any, index: number) => (
+              <View key={index} style={styles.enterpriseThreatCard}>
+                <View style={styles.threatCardHeader}>
+                  <Ionicons name="warning" size={24} color={getThreatLevelColor(threat.threat_level)} />
+                  <View style={styles.threatCardInfo}>
+                    <Text style={styles.threatCardName}>{threat.app_name}</Text>
+                    <Text style={styles.threatCardPackage}>{threat.package_name}</Text>
+                    <View style={styles.threatTags}>
+                      <View style={[styles.threatTag, { backgroundColor: getThreatLevelColor(threat.threat_level) + '30' }]}>
+                        <Text style={[styles.threatTagText, { color: getThreatLevelColor(threat.threat_level) }]}>
+                          {threat.threat_level.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.threatTag}>
+                        <Text style={styles.threatTagText}>{threat.category.replace('_', ' ').toUpperCase()}</Text>
+                      </View>
+                      {threat.is_system && (
+                        <View style={[styles.threatTag, { backgroundColor: '#ff990030' }]}>
+                          <Text style={[styles.threatTagText, { color: '#ff9900' }]}>SYSTEM</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.threatCardDesc}>{threat.description}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
@@ -147,14 +258,14 @@ export default function SecurityScreen() {
             <Text style={styles.statLabel}>Active Threats</Text>
           </View>
           <View style={styles.statCard}>
+            <Ionicons name="business" size={32} color="#ff9900" />
+            <Text style={styles.statNumber}>{enterpriseThreats.length}</Text>
+            <Text style={styles.statLabel}>Enterprise</Text>
+          </View>
+          <View style={styles.statCard}>
             <Ionicons name="shield-checkmark" size={32} color="#00ff88" />
             <Text style={styles.statNumber}>24/7</Text>
             <Text style={styles.statLabel}>Protection</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Ionicons name="lock-closed" size={32} color="#00aaff" />
-            <Text style={styles.statNumber}>AES-256</Text>
-            <Text style={styles.statLabel}>Encryption</Text>
           </View>
         </View>
 
@@ -194,22 +305,6 @@ export default function SecurityScreen() {
             <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
           </View>
         </View>
-
-        {/* Recent Threats */}
-        {threats.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Threats</Text>
-            {threats.slice(0, 3).map((threat: any) => (
-              <View key={threat.id} style={styles.threatCard}>
-                <Ionicons name="alert-circle" size={24} color="#ff3366" />
-                <View style={styles.threatInfo}>
-                  <Text style={styles.threatType}>{threat.threat_type}</Text>
-                  <Text style={styles.threatDesc}>{threat.description}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
       </ScrollView>
     </View>
   );
@@ -233,8 +328,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  settingsButton: {
-    padding: 8,
+  enterpriseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ff336620',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#ff3366',
+  },
+  enterpriseBadge: {
+    color: '#ff3366',
+    fontSize: 14,
+    fontWeight: '700',
   },
   content: {
     flex: 1,
@@ -276,30 +384,161 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
+  scanButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
   scanButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#00ff88',
-    marginHorizontal: 20,
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     gap: 8,
+  },
+  scanButtonEnterprise: {
+    backgroundColor: '#ff3366',
   },
   scanButtonActive: {
     opacity: 0.7,
   },
   scanButtonText: {
     color: '#000',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1,
+  },
+  developerCard: {
+    backgroundColor: '#00aaff20',
+    marginHorizontal: 20,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#00aaff',
+  },
+  developerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  developerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#00aaff',
+  },
+  developerDesc: {
+    fontSize: 12,
+    color: '#00aaff',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  scanOptions: {
+    gap: 8,
+  },
+  scanOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    padding: 12,
+    borderRadius: 8,
+  },
+  scanOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#00aaff',
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  criticalBadge: {
+    backgroundColor: '#ff003320',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ff0033',
+  },
+  criticalText: {
+    color: '#ff0033',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  enterpriseThreatCard: {
+    backgroundColor: '#1a1a1a',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff3366',
+  },
+  threatCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  threatCardInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  threatCardName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  threatCardPackage: {
+    fontSize: 11,
+    color: '#999',
+    fontFamily: 'monospace',
+  },
+  threatTags: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+    flexWrap: 'wrap',
+  },
+  threatTag: {
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  threatTagText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#999',
+    letterSpacing: 0.5,
+  },
+  threatCardDesc: {
+    fontSize: 12,
+    color: '#999',
+    lineHeight: 18,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    marginTop: 24,
+    marginBottom: 24,
     gap: 12,
   },
   statCard: {
@@ -320,16 +559,6 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 4,
     textAlign: 'center',
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginTop: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
   },
   featureCard: {
     flexDirection: 'row',
@@ -361,27 +590,5 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-  },
-  threatCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    gap: 12,
-  },
-  threatInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  threatType: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  threatDesc: {
-    fontSize: 12,
-    color: '#999',
   },
 });

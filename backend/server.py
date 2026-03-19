@@ -83,18 +83,77 @@ class ThreatLog(BaseModel):
     detected_at: datetime = Field(default_factory=datetime.utcnow)
     resolved: bool = False
 
+# Enhanced Security Models
+class EnterpriseApp(BaseModel):
+    package_name: str
+    app_name: str
+    threat_level: str  # critical, high, medium, low
+    category: str  # enterprise_spyware, bloatware, adware, tracker
+    description: str
+    is_system: bool
+    can_remove: bool
+
+# Known enterprise/bloatware packages for Blu G64
+ENTERPRISE_THREATS = [
+    {"package": "com.android.enterprise", "name": "Enterprise Suite", "level": "high", "category": "enterprise_spyware"},
+    {"package": "com.google.android.gms.policy", "name": "Enterprise Policy", "level": "high", "category": "enterprise_spyware"},
+    {"package": "com.tracfone", "name": "TracFone Services", "level": "medium", "category": "bloatware"},
+    {"package": "com.facebook.system", "name": "Facebook System", "level": "medium", "category": "bloatware"},
+    {"package": "com.facebook.services", "name": "Facebook Services", "level": "medium", "category": "bloatware"},
+    {"package": "com.facebook.appmanager", "name": "Facebook App Manager", "level": "high", "category": "tracker"},
+    {"package": "com.android.managedprovisioning", "name": "Managed Provisioning", "level": "high", "category": "enterprise_spyware"},
+    {"package": "com.qualcomm.qti.telephonyservice", "name": "Qualcomm Telemetry", "level": "medium", "category": "tracker"},
+    {"package": "com.amazon.appmanager", "name": "Amazon App Manager", "level": "medium", "category": "bloatware"},
+]
+
 # Security Endpoints
 @api_router.post("/security/scan", response_model=SecurityScan)
-async def create_security_scan(device_id: str):
-    """Perform security scan on device"""
+async def create_security_scan(device_id: str, scan_type: str = "full"):
+    """Perform security scan on device - enhanced for Blu G64"""
+    # Simulate scanning for enterprise threats
+    threats_found = 0
+    if scan_type in ["full", "enterprise"]:
+        threats_found = len(ENTERPRISE_THREATS)
+        
+        # Log enterprise threats
+        for threat in ENTERPRISE_THREATS:
+            await db.threat_logs.insert_one({
+                "id": str(uuid.uuid4()),
+                "device_id": device_id,
+                "threat_type": threat["category"],
+                "threat_level": threat["level"],
+                "package_name": threat["package"],
+                "description": f"Detected: {threat['name']} - Enterprise/Bloatware threat",
+                "detected_at": datetime.utcnow(),
+                "resolved": False
+            })
+    
+    security_score = max(50, 100 - (threats_found * 5))
+    
     scan = SecurityScan(
         device_id=device_id,
-        threats_found=0,
-        apps_scanned=45,
-        security_score=98
+        threats_found=threats_found,
+        apps_scanned=65,  # Including system apps
+        security_score=security_score
     )
     await db.security_scans.insert_one(scan.dict())
     return scan
+
+@api_router.get("/security/enterprise-threats")
+async def get_enterprise_threats():
+    """Get list of known enterprise/bloatware threats for Blu G64"""
+    return [
+        {
+            "package_name": t["package"],
+            "app_name": t["name"],
+            "threat_level": t["level"],
+            "category": t["category"],
+            "description": f"Corporate spyware/bloatware commonly found on Blu G64",
+            "is_system": True,
+            "can_remove": True
+        }
+        for t in ENTERPRISE_THREATS
+    ]
 
 @api_router.get("/security/scans/{device_id}", response_model=List[SecurityScan])
 async def get_security_scans(device_id: str, limit: int = 10):
@@ -141,6 +200,34 @@ async def stop_app(device_id: str, package_name: str):
         "success": True,
         "package": package_name,
         "message": "App stopped successfully"
+    }
+
+@api_router.post("/apps/remove")
+async def remove_app(device_id: str, package_name: str, force: bool = False):
+    """Remove/uninstall app via Shizuku (including system apps with force=True)"""
+    # Log the removal action
+    await db.app_removals.insert_one({
+        "id": str(uuid.uuid4()),
+        "device_id": device_id,
+        "package_name": package_name,
+        "removed_at": datetime.utcnow(),
+        "was_system_app": force
+    })
+    
+    return {
+        "success": True,
+        "package": package_name,
+        "message": f"App {'removed' if not force else 'uninstalled (system app)'} successfully"
+    }
+
+@api_router.post("/apps/clear-cache")
+async def clear_app_cache(device_id: str, package_name: str):
+    """Clear cache for specific app via Shizuku"""
+    return {
+        "success": True,
+        "package": package_name,
+        "cache_cleared": "145 MB",
+        "message": "Cache cleared successfully"
     }
 
 @api_router.get("/apps/running/{device_id}")

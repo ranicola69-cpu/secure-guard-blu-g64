@@ -69,6 +69,44 @@ export default function AppsScreen() {
     );
   };
 
+  const removeApp = async (packageName: string, appName: string, isSystem: boolean) => {
+    Alert.alert(
+      isSystem ? 'Remove System App' : 'Uninstall App',
+      `⚠️ ${isSystem ? 'WARNING: This is a system app!' : ''}\n\nAre you sure you want to ${isSystem ? 'remove' : 'uninstall'} ${appName}?\n\n${isSystem ? 'This requires Shizuku with root-level permissions and may affect system stability.' : 'This will uninstall the app from your device.'}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isSystem ? 'Force Remove' : 'Uninstall',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.post(
+                `${API_URL}/api/apps/remove?device_id=${deviceId}&package_name=${packageName}&force=${isSystem}`
+              );
+              Alert.alert('Success', `${appName} has been ${isSystem ? 'removed' : 'uninstalled'}`);
+              await loadRunningApps(deviceId);
+            } catch (error) {
+              console.error('Error removing app:', error);
+              Alert.alert('Error', 'Failed to remove app. Make sure Shizuku is running with proper permissions.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const clearAppCache = async (packageName: string, appName: string) => {
+    try {
+      await axios.post(
+        `${API_URL}/api/apps/clear-cache?device_id=${deviceId}&package_name=${packageName}`
+      );
+      Alert.alert('Success', `Cache cleared for ${appName}`);
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+      Alert.alert('Error', 'Failed to clear cache');
+    }
+  };
+
   const viewPermissions = async (packageName: string) => {
     try {
       const response = await axios.get(`${API_URL}/api/apps/permissions/${packageName}`);
@@ -173,6 +211,12 @@ export default function AppsScreen() {
               >
                 <Ionicons name="shield-outline" size={20} color="#00aaff" />
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => clearAppCache(app.package_name || app.package, app.app_name || app.name)}
+              >
+                <Ionicons name="trash-outline" size={20} color="#ffaa00" />
+              </TouchableOpacity>
               {selectedTab === 'running' && (
                 <TouchableOpacity
                   style={[styles.actionButton, styles.stopButton]}
@@ -181,6 +225,12 @@ export default function AppsScreen() {
                   <Ionicons name="stop-circle" size={20} color="#ff3366" />
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                style={[styles.actionButton, styles.removeButton]}
+                onPress={() => removeApp(app.package_name || app.package, app.app_name || app.name, app.isSystem || app.is_system || false)}
+              >
+                <Ionicons name="close-circle" size={20} color="#ff0033" />
+              </TouchableOpacity>
             </View>
           </View>
         ))}
@@ -357,6 +407,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stopButton: {},
+  removeButton: {},
   statsSection: {
     marginTop: 24,
     marginBottom: 32,
