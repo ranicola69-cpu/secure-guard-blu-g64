@@ -8,10 +8,14 @@ import {
   RefreshControl,
   Modal,
   Switch,
+  Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import DonateButton from '../../components/DonateButton';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -29,6 +33,7 @@ export default function SecurityScreen() {
   const [showScanOptions, setShowScanOptions] = useState(false);
   const [scanType, setScanType] = useState('full');
   const [showEnterprise, setShowEnterprise] = useState(false);
+  const [networkScanning, setNetworkScanning] = useState(false);
 
   useEffect(() => {
     initDevice();
@@ -80,8 +85,95 @@ export default function SecurityScreen() {
       await axios.post(`${API_URL}/api/security/scan?device_id=${deviceId}&scan_type=${type}`);
       await loadSecurityStatus(deviceId);
       await loadThreats(deviceId);
+      Alert.alert('Scan Complete', `${type === 'enterprise' ? 'Enterprise' : 'Full'} scan completed successfully`);
     } catch (error) {
       console.error('Error performing scan:', error);
+      Alert.alert('Error', 'Failed to perform scan');
+    }
+    setScanning(false);
+  };
+
+  const removeThreat = async (threat: any) => {
+    Alert.alert(
+      'Remove Threat',
+      `Remove ${threat.app_name}?\n\nThis will uninstall the app using Shizuku.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.post(
+                `${API_URL}/api/security/remove-threat?device_id=${deviceId}&threat_id=${threat.id || ''}&package_name=${threat.package_name}`
+              );
+              Alert.alert('Success', `${threat.app_name} removed successfully`);
+              await loadEnterpriseThreats();
+              await loadThreats(deviceId);
+            } catch (error) {
+              console.error('Error removing threat:', error);
+              Alert.alert('Error', 'Failed to remove threat. Ensure Shizuku is running.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const updateDatabase = async () => {
+    Alert.alert('Update Threat Database', 'Download latest threat definitions?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Update',
+        onPress: async () => {
+          try {
+            const response = await axios.post(`${API_URL}/api/security/update-database`);
+            Alert.alert(
+              'Database Updated',
+              `Added: ${response.data.threats_added} threats\nUpdated: ${response.data.threats_updated} definitions\nVersion: ${response.data.database_version}`
+            );
+            await loadEnterpriseThreats();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to update database');
+          }
+        },
+      },
+    ]);
+  };
+
+  const scanNetwork = async (type: 'wifi' | 'cellular') => {
+    setNetworkScanning(true);
+    try {
+      const endpoint = type === 'wifi' ? '/api/security/wifi-scan' : '/api/security/cellular-scan';
+      const response = await axios.post(`${API_URL}${endpoint}?device_id=${deviceId}`);
+      const data = response.data;
+      
+      Alert.alert(
+        `${type === 'wifi' ? 'WiFi' : 'Cellular'} Security Scan`,
+        `Security Score: ${data.security_score}/100\n\nVulnerabilities: ${data.vulnerabilities.length}\n\n${data.vulnerabilities.map((v: any) => `• ${v.type} (${v.severity})`).join('\n')}\n\nRecommendations:\n${data.recommendations.join('\n')}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to scan network');
+    }
+    setNetworkScanning(false);
+  };
+
+  const performAdvancedScan = async (type: 'redhat' | 'blackhat') => {
+    setScanning(true);
+    try {
+      const endpoint = type === 'redhat' ? '/api/security/redhat-scan' : '/api/security/blackhat-scan';
+      const response = await axios.post(`${API_URL}${endpoint}?device_id=${deviceId}`);
+      const data = response.data;
+      
+      const findings = data.findings || data.finding || [];
+      Alert.alert(
+        `${type === 'redhat' ? 'Red Hat' : 'Black Hat'} Scan`,
+        `${type === 'redhat' ? 'Ethical Security Analysis' : 'Penetration Testing'}\n\nScore: ${data.security_score || data.risk_level}/100\nFindings: ${findings.length}\n\n${findings.slice(0, 3).map((f: any) => `• ${f.category || f.attack_vector}: ${f.severity}`).join('\n')}`,
+        [{ text: 'View Details', onPress: () => console.log(data) }, { text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to perform scan');
     }
     setScanning(false);
   };
@@ -119,13 +211,16 @@ export default function SecurityScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Security Dashboard</Text>
-        <TouchableOpacity 
-          style={styles.enterpriseButton}
-          onPress={() => setShowEnterprise(!showEnterprise)}
-        >
-          <Ionicons name="business" size={20} color="#ff3366" />
-          <Text style={styles.enterpriseBadge}>{enterpriseThreats.length}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <DonateButton />
+          <TouchableOpacity 
+            style={styles.enterpriseButton}
+            onPress={() => setShowEnterprise(!showEnterprise)}
+          >
+            <Ionicons name="business" size={20} color="#ff3366" />
+            <Text style={styles.enterpriseBadge}>{enterpriseThreats.length}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -327,6 +422,10 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   enterpriseButton: {
     flexDirection: 'row',

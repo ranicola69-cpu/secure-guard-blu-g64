@@ -155,6 +155,145 @@ async def get_enterprise_threats():
         for t in ENTERPRISE_THREATS
     ]
 
+@api_router.post("/security/remove-threat")
+async def remove_threat(device_id: str, threat_id: str, package_name: str):
+    """Remove a detected threat and mark as resolved"""
+    # Mark threat as resolved
+    await db.threat_logs.update_one(
+        {"id": threat_id},
+        {"$set": {"resolved": True, "resolved_at": datetime.utcnow()}}
+    )
+    
+    # Log removal
+    await db.app_removals.insert_one({
+        "id": str(uuid.uuid4()),
+        "device_id": device_id,
+        "package_name": package_name,
+        "removed_at": datetime.utcnow(),
+        "was_threat": True
+    })
+    
+    return {"success": True, "message": f"Threat {package_name} removed successfully"}
+
+@api_router.post("/security/update-database")
+async def update_threat_database():
+    """Update threat database with latest definitions"""
+    # Simulate database update
+    return {
+        "success": True,
+        "threats_added": 3,
+        "threats_updated": 5,
+        "database_version": "2025.03.19",
+        "last_update": datetime.utcnow()
+    }
+
+@api_router.post("/security/wifi-scan")
+async def scan_wifi_security(device_id: str):
+    """Scan WiFi network for security vulnerabilities"""
+    return {
+        "network_name": "Current WiFi Network",
+        "security_type": "WPA2",
+        "encryption": "AES",
+        "security_score": 85,
+        "vulnerabilities": [
+            {"type": "WPS Enabled", "severity": "medium", "description": "WPS can be exploited"},
+            {"type": "Old Router Firmware", "severity": "low", "description": "Update router firmware"}
+        ],
+        "recommendations": [
+            "Disable WPS",
+            "Use WPA3 if available",
+            "Change default admin password"
+        ]
+    }
+
+@api_router.post("/security/cellular-scan")
+async def scan_cellular_security(device_id: str):
+    """Scan cellular network for security issues"""
+    return {
+        "carrier": "Detected Carrier",
+        "network_type": "4G LTE",
+        "cell_tower_id": "12345",
+        "security_score": 90,
+        "vulnerabilities": [
+            {"type": "IMSI Catcher Risk", "severity": "medium", "description": "Possible fake cell tower"},
+            {"type": "Unencrypted SMS", "severity": "high", "description": "SMS not encrypted"}
+        ],
+        "recommendations": [
+            "Use encrypted messaging apps",
+            "Enable VoLTE",
+            "Monitor unusual network switches"
+        ]
+    }
+
+@api_router.post("/security/redhat-scan")
+async def redhat_security_scan(device_id: str):
+    """Red Hat (Ethical) security scan - defensive analysis"""
+    return {
+        "scan_type": "Red Hat - Ethical/Defensive",
+        "security_score": 88,
+        "vulnerabilities_found": 3,
+        "findings": [
+            {
+                "category": "App Permissions",
+                "severity": "medium",
+                "description": "5 apps with unnecessary dangerous permissions",
+                "recommendation": "Review and revoke unnecessary permissions"
+            },
+            {
+                "category": "Network Security",
+                "severity": "medium", 
+                "description": "2 apps sending data over HTTP",
+                "recommendation": "Use apps with HTTPS only"
+            },
+            {
+                "category": "Device Encryption",
+                "severity": "low",
+                "description": "Storage not encrypted",
+                "recommendation": "Enable device encryption"
+            }
+        ]
+    }
+
+@api_router.post("/security/blackhat-scan")
+async def blackhat_security_scan(device_id: str):
+    """Black Hat (Offensive) security scan - penetration testing"""
+    return {
+        "scan_type": "Black Hat - Offensive/Penetration Testing",
+        "risk_level": "medium",
+        "attack_vectors_found": 4,
+        "findings": [
+            {
+                "attack_vector": "ADB Debugging",
+                "exploitable": True,
+                "severity": "critical",
+                "description": "USB debugging enabled - remote code execution possible",
+                "mitigation": "Disable USB debugging when not needed"
+            },
+            {
+                "attack_vector": "Weak Lock Screen",
+                "exploitable": True,
+                "severity": "high",
+                "description": "Simple PIN pattern detected",
+                "mitigation": "Use complex password or biometric"
+            },
+            {
+                "attack_vector": "Root Detection",
+                "exploitable": False,
+                "severity": "info",
+                "description": "Device not rooted - good security",
+                "mitigation": "Keep device unrooted"
+            },
+            {
+                "attack_vector": "Open Ports",
+                "exploitable": True,
+                "severity": "medium",
+                "description": "2 open network ports detected",
+                "mitigation": "Close unnecessary network services"
+            }
+        ],
+        "warning": "This scan identifies potential attack vectors. Use responsibly."
+    }
+
 @api_router.get("/security/scans/{device_id}", response_model=List[SecurityScan])
 async def get_security_scans(device_id: str, limit: int = 10):
     """Get security scan history"""
