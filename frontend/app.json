@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure Guard",
     "slug": "secure-guard-blu-g64",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secureguard",
@@ -10,7 +10,7 @@
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.secureguard.blug64"
+      "bundleIdentifier": "com.dphms.secureguard"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,14 +18,13 @@
         "backgroundColor": "#0a0a0a"
       },
       "edgeToEdgeEnabled": false,
-      "package": "com.secureguard.blug64",
+      "package": "com.dphms.secureguard",
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.ACCESS_WIFI_STATE",
-        "android.permission.CHANGE_NETWORK_STATE",
-        "android.permission.CHANGE_WIFI_STATE"
-      ]
+        "android.permission.ACCESS_WIFI_STATE"
+      ],
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "bundler": "metro",

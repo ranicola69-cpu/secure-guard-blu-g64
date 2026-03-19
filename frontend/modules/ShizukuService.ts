@@ -1,7 +1,8 @@
 // Native Shizuku Module TypeScript Wrapper
+// Safe wrapper that handles missing native modules gracefully
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
-const { ShizukuModule } = NativeModules;
+const ShizukuModule = NativeModules?.ShizukuModule || null;
 
 interface ShizukuEventEmitter {
   addListener: (eventType: string, listener: (...args: any[]) => void) => { remove: () => void };

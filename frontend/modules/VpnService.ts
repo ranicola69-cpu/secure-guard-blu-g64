@@ -1,7 +1,8 @@
 // Native VPN Module TypeScript Wrapper
+// Safe wrapper that handles missing native modules gracefully
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
-const { VpnModule } = NativeModules;
+const VpnModule = NativeModules?.VpnModule || null;
 
 interface VpnEventEmitter {
   addListener: (eventType: string, listener: (...args: any[]) => void) => { remove: () => void };
