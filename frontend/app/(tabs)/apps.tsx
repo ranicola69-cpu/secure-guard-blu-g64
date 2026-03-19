@@ -7,164 +7,308 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Platform,
+  ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { Shizuku, PackageInfo } from '../../modules/ShizukuService';
+import { ThreatDB, ThreatDefinition } from '../../modules/ThreatDatabase';
+
+type AppFilter = 'all' | 'system' | 'user' | 'threats';
+
+interface EnhancedApp extends PackageInfo {
+  threat?: ThreatDefinition;
+}
 
 export default function AppsScreen() {
-  const [deviceId, setDeviceId] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [runningApps, setRunningApps] = useState([]);
-  const [selectedTab, setSelectedTab] = useState<'running' | 'all'>('running');
+  const [loading, setLoading] = useState(true);
+  const [apps, setApps] = useState<EnhancedApp[]>([]);
+  const [filteredApps, setFilteredApps] = useState<EnhancedApp[]>([]);
+  const [filter, setFilter] = useState<AppFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Shizuku state
+  const [shizukuReady, setShizukuReady] = useState(false);
+  const [processingApp, setProcessingApp] = useState<string | null>(null);
 
   useEffect(() => {
-    initDevice();
+    checkShizukuAndLoadApps();
   }, []);
 
-  const initDevice = async () => {
-    let id = await AsyncStorage.getItem('device_id');
-    if (!id) {
-      id = `device_${Date.now()}`;
-      await AsyncStorage.setItem('device_id', id);
+  useEffect(() => {
+    filterApps();
+  }, [apps, filter, searchQuery]);
+
+  const checkShizukuAndLoadApps = async () => {
+    setLoading(true);
+    
+    const hasPermission = await Shizuku.checkPermission();
+    setShizukuReady(hasPermission);
+    
+    if (hasPermission) {
+      await loadRealApps();
+    } else {
+      await loadDefaultThreats();
     }
-    setDeviceId(id);
-    loadRunningApps(id);
+    
+    setLoading(false);
   };
 
-  const loadRunningApps = async (id: string) => {
+  const loadRealApps = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/apps/running/${id}`);
-      setRunningApps(response.data);
+      const packages = await Shizuku.getInstalledPackages();
+      const threats = await ThreatDB.getDatabase();
+      
+      const enhancedApps: EnhancedApp[] = packages.map(pkg => ({
+        ...pkg,
+        threat: threats?.threats.find(t => t.package_name === pkg.packageName),
+      }));
+      
+      // Sort: threats first, then alphabetically
+      enhancedApps.sort((a, b) => {
+        if (a.threat && !b.threat) return -1;
+        if (!a.threat && b.threat) return 1;
+        return a.packageName.localeCompare(b.packageName);
+      });
+      
+      setApps(enhancedApps);
     } catch (error) {
-      console.error('Error loading running apps:', error);
+      console.error('Error loading apps:', error);
+      await loadDefaultThreats();
     }
   };
 
-  const stopApp = async (packageName: string, appName: string) => {
-    Alert.alert(
-      'Stop App',
-      `Are you sure you want to force stop ${appName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await axios.post(
-                `${API_URL}/api/apps/stop?device_id=${deviceId}&package_name=${packageName}`
-              );
-              Alert.alert('Success', `${appName} has been stopped`);
-              await loadRunningApps(deviceId);
-            } catch (error) {
-              console.error('Error stopping app:', error);
-              Alert.alert('Error', 'Failed to stop app');
-            }
-          },
-        },
-      ]
-    );
+  const loadDefaultThreats = async () => {
+    // If Shizuku is not available, show known threats from database
+    const threats = await ThreatDB.getDatabase();
+    if (threats) {
+      const threatApps: EnhancedApp[] = threats.threats.map(threat => ({
+        packageName: threat.package_name,
+        versionName: 'Unknown',
+        versionCode: 0,
+        isSystem: threat.is_system,
+        threat,
+      }));
+      setApps(threatApps);
+    }
   };
 
-  const removeApp = async (packageName: string, appName: string, isSystem: boolean) => {
-    Alert.alert(
-      isSystem ? 'Remove System App' : 'Uninstall App',
-      `⚠️ ${isSystem ? 'WARNING: This is a system app!' : ''}\n\nAre you sure you want to ${isSystem ? 'remove' : 'uninstall'} ${appName}?\n\n${isSystem ? 'This requires Shizuku with root-level permissions and may affect system stability.' : 'This will uninstall the app from your device.'}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isSystem ? 'Force Remove' : 'Uninstall',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await axios.post(
-                `${API_URL}/api/apps/remove?device_id=${deviceId}&package_name=${packageName}&force=${isSystem}`
-              );
-              Alert.alert('Success', `${appName} has been ${isSystem ? 'removed' : 'uninstalled'}`);
-              await loadRunningApps(deviceId);
-            } catch (error) {
-              console.error('Error removing app:', error);
-              Alert.alert('Error', 'Failed to remove app. Make sure Shizuku is running with proper permissions.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const clearAppCache = async (packageName: string, appName: string) => {
-    try {
-      await axios.post(
-        `${API_URL}/api/apps/clear-cache?device_id=${deviceId}&package_name=${packageName}`
+  const filterApps = () => {
+    let filtered = apps;
+    
+    // Apply category filter
+    switch (filter) {
+      case 'system':
+        filtered = filtered.filter(app => app.isSystem);
+        break;
+      case 'user':
+        filtered = filtered.filter(app => !app.isSystem);
+        break;
+      case 'threats':
+        filtered = filtered.filter(app => app.threat);
+        break;
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(app => 
+        app.packageName.toLowerCase().includes(query) ||
+        (app.threat?.app_name || '').toLowerCase().includes(query)
       );
-      Alert.alert('Success', `Cache cleared for ${appName}`);
-    } catch (error) {
-      console.error('Error clearing cache:', error);
-      Alert.alert('Error', 'Failed to clear cache');
     }
-  };
-
-  const viewPermissions = async (packageName: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/api/apps/permissions/${packageName}`);
-      const perms = response.data.permissions;
-      const dangerousPerms = perms.filter((p: any) => p.dangerous && p.granted);
-      Alert.alert(
-        'App Permissions',
-        `Dangerous permissions granted: ${dangerousPerms.length}\n\n${dangerousPerms.map((p: any) => `• ${p.name}`).join('\n')}`
-      );
-    } catch (error) {
-      console.error('Error fetching permissions:', error);
-    }
+    
+    setFilteredApps(filtered);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadRunningApps(deviceId);
+    await checkShizukuAndLoadApps();
     setRefreshing(false);
   };
 
-  const allApps = [
-    { package: 'com.android.chrome', name: 'Chrome', isSystem: false },
-    { package: 'com.whatsapp', name: 'WhatsApp', isSystem: false },
-    { package: 'com.facebook.katana', name: 'Facebook', isSystem: false },
-    { package: 'com.instagram.android', name: 'Instagram', isSystem: false },
-    { package: 'com.android.systemui', name: 'System UI', isSystem: true },
-    { package: 'com.android.settings', name: 'Settings', isSystem: true },
-  ];
+  const requestShizukuPermission = async () => {
+    const granted = await Shizuku.requestPermission();
+    if (granted) {
+      setShizukuReady(true);
+      await loadRealApps();
+    } else {
+      Alert.alert('Permission Required', 'Shizuku permission is required to manage apps.');
+    }
+  };
 
-  const displayApps = selectedTab === 'running' ? runningApps : allApps;
+  const handleAppAction = async (app: EnhancedApp, action: 'stop' | 'disable' | 'uninstall' | 'clear') => {
+    if (!shizukuReady) {
+      Alert.alert('Shizuku Required', 'Please grant Shizuku permission first.');
+      return;
+    }
+
+    const actionLabels = {
+      stop: 'Force Stop',
+      disable: 'Disable',
+      uninstall: 'Uninstall',
+      clear: 'Clear Cache',
+    };
+
+    Alert.alert(
+      `${actionLabels[action]} ${app.threat?.app_name || app.packageName}?`,
+      action === 'uninstall' 
+        ? 'This will completely remove the app from your device.' 
+        : action === 'disable'
+        ? 'This will disable the app. It will no longer run or appear in your app list.'
+        : action === 'stop'
+        ? 'This will force stop the app. It may restart automatically.'
+        : 'This will clear the app\'s cache data.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: actionLabels[action],
+          style: 'destructive',
+          onPress: async () => {
+            setProcessingApp(app.packageName);
+            
+            try {
+              let success = false;
+              
+              switch (action) {
+                case 'stop':
+                  success = await Shizuku.forceStopPackage(app.packageName);
+                  break;
+                case 'disable':
+                  success = await Shizuku.disablePackage(app.packageName);
+                  break;
+                case 'uninstall':
+                  success = await Shizuku.uninstallPackage(app.packageName);
+                  break;
+                case 'clear':
+                  success = await Shizuku.clearAppCache(app.packageName);
+                  break;
+              }
+              
+              if (success) {
+                Alert.alert('Success', `${actionLabels[action]} completed successfully.`);
+                
+                // Refresh app list for uninstall/disable
+                if (action === 'uninstall' || action === 'disable') {
+                  await loadRealApps();
+                }
+              } else {
+                Alert.alert('Failed', `${actionLabels[action]} failed. Please try again.`);
+              }
+            } catch (error) {
+              console.error(`${action} error:`, error);
+              Alert.alert('Error', `An error occurred during ${actionLabels[action].toLowerCase()}.`);
+            }
+            
+            setProcessingApp(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const executeCommand = async (command: string) => {
+    if (!shizukuReady) {
+      Alert.alert('Shizuku Required', 'Please grant Shizuku permission first.');
+      return;
+    }
+    
+    const result = await Shizuku.executeCommand(command);
+    Alert.alert(
+      'Command Result',
+      `Exit Code: ${result.exitCode}\n\nOutput:\n${result.output || 'No output'}\n\nErrors:\n${result.error || 'None'}`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const getThreatLevelColor = (level?: string) => {
+    const colors: Record<string, string> = {
+      critical: '#ff0044',
+      high: '#ff3366',
+      medium: '#ffaa00',
+      low: '#ffcc00',
+    };
+    return colors[level || ''] || '#999';
+  };
+
+  const getCategoryLabel = () => {
+    switch (filter) {
+      case 'system': return 'System Apps';
+      case 'user': return 'User Apps';
+      case 'threats': return 'Detected Threats';
+      default: return 'All Apps';
+    }
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>App Manager</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>SHIZUKU</Text>
+        <View style={[styles.shizukuBadge, shizukuReady && styles.shizukuBadgeActive]}>
+          <Ionicons 
+            name={shizukuReady ? "shield-checkmark" : "shield-outline"} 
+            size={16} 
+            color={shizukuReady ? "#00ff88" : "#ff9900"} 
+          />
+          <Text style={[styles.shizukuText, shizukuReady && { color: '#00ff88' }]}>
+            {shizukuReady ? 'SHIZUKU' : 'LIMITED'}
+          </Text>
         </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, selectedTab === 'running' && styles.tabActive]}
-          onPress={() => setSelectedTab('running')}
-        >
-          <Text style={[styles.tabText, selectedTab === 'running' && styles.tabTextActive]}>
-            Running ({runningApps.length})
-          </Text>
+      {!shizukuReady && (
+        <TouchableOpacity style={styles.shizukuPrompt} onPress={requestShizukuPermission}>
+          <Ionicons name="warning" size={24} color="#ff9900" />
+          <View style={styles.shizukuPromptContent}>
+            <Text style={styles.shizukuPromptTitle}>Shizuku Required</Text>
+            <Text style={styles.shizukuPromptDesc}>
+              Tap to grant Shizuku permission for full app management capabilities.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color="#ff9900" />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, selectedTab === 'all' && styles.tabActive]}
-          onPress={() => setSelectedTab('all')}
-        >
-          <Text style={[styles.tabText, selectedTab === 'all' && styles.tabTextActive]}>
-            All Apps ({allApps.length})
-          </Text>
-        </TouchableOpacity>
+      )}
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#666" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search apps..."
+          placeholderTextColor="#666"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color="#666" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Filter Tabs */}
+      <View style={styles.filterTabs}>
+        {(['all', 'threats', 'system', 'user'] as AppFilter[]).map(f => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterTab, filter === f && styles.filterTabActive]}
+            onPress={() => setFilter(f)}
+          >
+            <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+              {f === 'all' ? 'All' : f === 'threats' ? 'Threats' : f === 'system' ? 'System' : 'User'}
+            </Text>
+            {f === 'threats' && (
+              <View style={styles.threatCountBadge}>
+                <Text style={styles.threatCountText}>
+                  {apps.filter(a => a.threat).length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
@@ -173,89 +317,162 @@ export default function AppsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00ff88" />
         }
       >
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle" size={24} color="#00aaff" />
-          <Text style={styles.infoText}>
-            Using Shizuku for system-level app management. Tap any app to manage.
-          </Text>
+        {/* Apps Count */}
+        <View style={styles.countRow}>
+          <Text style={styles.countLabel}>{getCategoryLabel()}</Text>
+          <Text style={styles.countValue}>{filteredApps.length} apps</Text>
         </View>
 
-        {/* Apps List */}
-        {displayApps.map((app: any, index) => (
-          <View key={app.package_name || app.package || index} style={styles.appCard}>
-            <View style={styles.appLeft}>
-              <View style={styles.appIconContainer}>
-                <Ionicons
-                  name={app.isSystem || app.is_system ? 'settings' : 'apps'}
-                  size={28}
-                  color={app.isSystem || app.is_system ? '#ff9900' : '#00ff88'}
-                />
-              </View>
-              <View style={styles.appInfo}>
-                <Text style={styles.appName}>{app.app_name || app.name}</Text>
-                <Text style={styles.appPackage}>{app.package_name || app.package}</Text>
-                {app.memory_usage && (
-                  <View style={styles.memoryBadge}>
-                    <Ionicons name="hardware-chip" size={12} color="#00aaff" />
-                    <Text style={styles.memoryText}>{app.memory_usage} MB</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#00ff88" />
+            <Text style={styles.loadingText}>Scanning apps...</Text>
+          </View>
+        ) : filteredApps.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="apps" size={48} color="#333" />
+            <Text style={styles.emptyText}>No apps found</Text>
+          </View>
+        ) : (
+          filteredApps.map(app => (
+            <View 
+              key={app.packageName} 
+              style={[styles.appCard, app.threat && styles.appCardThreat]}
+            >
+              <View style={styles.appHeader}>
+                <View style={styles.appIcon}>
+                  <Ionicons 
+                    name={app.threat ? "warning" : app.isSystem ? "cube" : "apps"} 
+                    size={24} 
+                    color={app.threat ? getThreatLevelColor(app.threat.threat_level) : app.isSystem ? "#666" : "#00ff88"} 
+                  />
+                </View>
+                <View style={styles.appInfo}>
+                  <Text style={styles.appName}>
+                    {app.threat?.app_name || app.packageName.split('.').pop()}
+                  </Text>
+                  <Text style={styles.appPackage}>{app.packageName}</Text>
+                  
+                  <View style={styles.appTags}>
+                    {app.isSystem && (
+                      <View style={styles.appTag}>
+                        <Text style={styles.appTagText}>SYSTEM</Text>
+                      </View>
+                    )}
+                    {app.threat && (
+                      <View style={[styles.appTag, { backgroundColor: getThreatLevelColor(app.threat.threat_level) + '30' }]}>
+                        <Text style={[styles.appTagText, { color: getThreatLevelColor(app.threat.threat_level) }]}>
+                          {app.threat.threat_level.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    {app.threat && (
+                      <View style={styles.appTag}>
+                        <Text style={styles.appTagText}>
+                          {app.threat.category.replace('_', ' ').toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
+                </View>
+              </View>
+              
+              {app.threat && (
+                <Text style={styles.appThreatDesc}>{app.threat.description}</Text>
+              )}
+              
+              {/* Action Buttons */}
+              <View style={styles.appActions}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleAppAction(app, 'stop')}
+                  disabled={processingApp === app.packageName}
+                >
+                  {processingApp === app.packageName ? (
+                    <ActivityIndicator size="small" color="#ffaa00" />
+                  ) : (
+                    <>
+                      <Ionicons name="stop-circle" size={18} color="#ffaa00" />
+                      <Text style={[styles.actionButtonText, { color: '#ffaa00' }]}>Stop</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleAppAction(app, 'clear')}
+                  disabled={processingApp === app.packageName}
+                >
+                  <Ionicons name="trash-bin" size={18} color="#00aaff" />
+                  <Text style={[styles.actionButtonText, { color: '#00aaff' }]}>Cache</Text>
+                </TouchableOpacity>
+                
+                {app.isSystem ? (
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleAppAction(app, 'disable')}
+                    disabled={processingApp === app.packageName}
+                  >
+                    <Ionicons name="eye-off" size={18} color="#ff9900" />
+                    <Text style={[styles.actionButtonText, { color: '#ff9900' }]}>Disable</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleAppAction(app, 'uninstall')}
+                    disabled={processingApp === app.packageName}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#ff3366" />
+                    <Text style={[styles.actionButtonText, { color: '#ff3366' }]}>Remove</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </View>
+          ))
+        )}
 
-            <View style={styles.appActions}>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => viewPermissions(app.package_name || app.package)}
+        {/* Advanced Commands */}
+        {shizukuReady && (
+          <View style={styles.advancedSection}>
+            <Text style={styles.advancedTitle}>Advanced Commands</Text>
+            <Text style={styles.advancedDesc}>
+              Execute shell commands with system-level privileges via Shizuku
+            </Text>
+            
+            <View style={styles.commandButtons}>
+              <TouchableOpacity 
+                style={styles.commandButton}
+                onPress={() => executeCommand('pm list packages -s')}
               >
-                <Ionicons name="shield-outline" size={20} color="#00aaff" />
+                <Ionicons name="terminal" size={20} color="#00ff88" />
+                <Text style={styles.commandButtonText}>List System Apps</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => clearAppCache(app.package_name || app.package, app.app_name || app.name)}
+              
+              <TouchableOpacity 
+                style={styles.commandButton}
+                onPress={() => executeCommand('dumpsys battery')}
               >
-                <Ionicons name="trash-outline" size={20} color="#ffaa00" />
+                <Ionicons name="battery-charging" size={20} color="#00ff88" />
+                <Text style={styles.commandButtonText}>Battery Info</Text>
               </TouchableOpacity>
-              {selectedTab === 'running' && (
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.stopButton]}
-                  onPress={() => stopApp(app.package_name || app.package, app.app_name || app.name)}
-                >
-                  <Ionicons name="stop-circle" size={20} color="#ff3366" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[styles.actionButton, styles.removeButton]}
-                onPress={() => removeApp(app.package_name || app.package, app.app_name || app.name, app.isSystem || app.is_system || false)}
+              
+              <TouchableOpacity 
+                style={styles.commandButton}
+                onPress={() => executeCommand('getprop ro.build.version.release')}
               >
-                <Ionicons name="close-circle" size={20} color="#ff0033" />
+                <Ionicons name="phone-portrait" size={20} color="#00ff88" />
+                <Text style={styles.commandButtonText}>Android Version</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ))}
+        )}
 
-        {/* Stats Section */}
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>System Stats</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Ionicons name="apps" size={28} color="#00ff88" />
-              <Text style={styles.statValue}>{allApps.length}</Text>
-              <Text style={styles.statLabel}>Total Apps</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="play-circle" size={28} color="#00aaff" />
-              <Text style={styles.statValue}>{runningApps.length}</Text>
-              <Text style={styles.statLabel}>Running</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="settings" size={28} color="#ff9900" />
-              <Text style={styles.statValue}>
-                {allApps.filter((a) => a.isSystem).length}
-              </Text>
-              <Text style={styles.statLabel}>System</Text>
-            </View>
+        {/* Shizuku Power Badge */}
+        <View style={styles.powerBadge}>
+          <Ionicons name="flash" size={24} color="#00ff88" />
+          <View style={styles.powerInfo}>
+            <Text style={styles.powerTitle}>POWERED BY SHIZUKU</Text>
+            <Text style={styles.powerDesc}>System-level app management without root</Text>
           </View>
         </View>
       </ScrollView>
@@ -281,86 +498,164 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  badge: {
-    backgroundColor: '#00ff8820',
-    paddingHorizontal: 12,
+  shizukuBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ff990020',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 8,
+    gap: 6,
     borderWidth: 1,
+    borderColor: '#ff9900',
+  },
+  shizukuBadgeActive: {
+    backgroundColor: '#00ff8820',
     borderColor: '#00ff88',
   },
-  badgeText: {
-    color: '#00ff88',
+  shizukuText: {
     fontSize: 10,
     fontWeight: '700',
+    color: '#ff9900',
     letterSpacing: 1,
   },
-  tabs: {
+  shizukuPrompt: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 20,
+    alignItems: 'center',
+    backgroundColor: '#ff990020',
+    marginHorizontal: 20,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#ff9900',
+  },
+  shizukuPromptContent: {
+    flex: 1,
+  },
+  shizukuPromptTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ff9900',
+  },
+  shizukuPromptDesc: {
+    fontSize: 12,
+    color: '#ff990099',
+    marginTop: 2,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    marginHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 16,
     gap: 12,
   },
-  tab: {
+  searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    alignItems: 'center',
+    fontSize: 14,
+    color: '#fff',
   },
-  tabActive: {
-    backgroundColor: '#00ff8820',
+  filterTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  filterTabActive: {
+    backgroundColor: '#00ff8830',
     borderWidth: 1,
     borderColor: '#00ff88',
   },
-  tabText: {
-    fontSize: 14,
+  filterTabText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#999',
   },
-  tabTextActive: {
+  filterTabTextActive: {
     color: '#00ff88',
+  },
+  threatCountBadge: {
+    backgroundColor: '#ff3366',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  threatCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
   },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#00aaff20',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#00aaff',
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#00aaff',
-    lineHeight: 18,
-  },
-  appCard: {
+  countRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
+  },
+  countLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  countValue: {
+    fontSize: 14,
+    color: '#999',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  appCard: {
     backgroundColor: '#1a1a1a',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#333',
   },
-  appLeft: {
+  appCardThreat: {
+    borderLeftColor: '#ff3366',
+  },
+  appHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
     gap: 12,
+    marginBottom: 12,
   },
-  appIconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+  appIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: '#0a0a0a',
     alignItems: 'center',
     justifyContent: 'center',
@@ -377,67 +672,112 @@ const styles = StyleSheet.create({
   appPackage: {
     fontSize: 11,
     color: '#999',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  memoryBadge: {
+  appTags: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#00aaff20',
+    gap: 6,
+    marginTop: 6,
+    flexWrap: 'wrap',
+  },
+  appTag: {
+    backgroundColor: '#333',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    borderRadius: 6,
   },
-  memoryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#00aaff',
+  appTagText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#999',
+    letterSpacing: 0.5,
+  },
+  appThreatDesc: {
+    fontSize: 12,
+    color: '#999',
+    lineHeight: 18,
+    marginBottom: 12,
   },
   appActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingTop: 12,
   },
   actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#0a0a0a',
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#0a0a0a',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
   },
-  stopButton: {},
-  removeButton: {},
-  statsSection: {
-    marginTop: 24,
-    marginBottom: 32,
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
+  advancedSection: {
     backgroundColor: '#1a1a1a',
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  advancedTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  advancedDesc: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 16,
+  },
+  commandButtons: {
     gap: 8,
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
+  commandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    padding: 12,
+    borderRadius: 8,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#00ff8840',
   },
-  statLabel: {
+  commandButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#00ff88',
+  },
+  powerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#00ff8815',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 32,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#00ff8840',
+  },
+  powerInfo: {
+    flex: 1,
+  },
+  powerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00ff88',
+    letterSpacing: 1,
+  },
+  powerDesc: {
     fontSize: 11,
-    color: '#999',
-    textAlign: 'center',
+    color: '#00ff8899',
+    marginTop: 2,
   },
 });

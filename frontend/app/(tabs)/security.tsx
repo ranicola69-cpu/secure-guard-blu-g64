@@ -10,14 +10,15 @@ import {
   Switch,
   Linking,
   Alert,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import DonateButton from '../../components/DonateButton';
-
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { Shizuku } from '../../modules/ShizukuService';
+import { ThreatDB, ThreatDefinition } from '../../modules/ThreatDatabase';
 
 export default function SecurityScreen() {
   const [deviceId, setDeviceId] = useState('');
@@ -28,15 +29,43 @@ export default function SecurityScreen() {
   });
   const [scanning, setScanning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [threats, setThreats] = useState([]);
-  const [enterpriseThreats, setEnterpriseThreats] = useState([]);
-  const [showScanOptions, setShowScanOptions] = useState(false);
-  const [scanType, setScanType] = useState('full');
+  const [threats, setThreats] = useState<ThreatDefinition[]>([]);
   const [showEnterprise, setShowEnterprise] = useState(false);
-  const [networkScanning, setNetworkScanning] = useState(false);
+  
+  // Shizuku state
+  const [shizukuInstalled, setShizukuInstalled] = useState(false);
+  const [shizukuRunning, setShizukuRunning] = useState(false);
+  const [shizukuPermission, setShizukuPermission] = useState(false);
+  const [shizukuVersion, setShizukuVersion] = useState(-1);
+  
+  // Database state
+  const [dbVersion, setDbVersion] = useState('');
+  const [dbUpdating, setDbUpdating] = useState(false);
+  
+  // Scan options
+  const [scanSystemApps, setScanSystemApps] = useState(true);
+  const [deepCacheAnalysis, setDeepCacheAnalysis] = useState(true);
 
   useEffect(() => {
     initDevice();
+    checkShizukuStatus();
+    loadThreatDatabase();
+    
+    // Set up Shizuku listeners
+    const connectedSub = Shizuku.onConnected(() => {
+      setShizukuRunning(true);
+      checkShizukuPermission();
+    });
+    
+    const disconnectedSub = Shizuku.onDisconnected(() => {
+      setShizukuRunning(false);
+      setShizukuPermission(false);
+    });
+    
+    return () => {
+      connectedSub.remove();
+      disconnectedSub.remove();
+    };
   }, []);
 
   const initDevice = async () => {
@@ -46,73 +75,183 @@ export default function SecurityScreen() {
       await AsyncStorage.setItem('device_id', id);
     }
     setDeviceId(id);
-    loadSecurityStatus(id);
-    loadThreats(id);
-    loadEnterpriseThreats();
   };
 
-  const loadSecurityStatus = async (id: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/api/security/status/${id}`);
-      setSecurityStatus(response.data);
-    } catch (error) {
-      console.error('Error loading security status:', error);
+  const checkShizukuStatus = async () => {
+    const installed = await Shizuku.isInstalled();
+    setShizukuInstalled(installed);
+    
+    if (installed) {
+      const running = await Shizuku.isRunning();
+      setShizukuRunning(running);
+      
+      if (running) {
+        const version = await Shizuku.getVersion();
+        setShizukuVersion(version);
+        await checkShizukuPermission();
+      }
     }
   };
 
-  const loadThreats = async (id: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/api/threats/${id}`);
-      setThreats(response.data);
-    } catch (error) {
-      console.error('Error loading threats:', error);
+  const checkShizukuPermission = async () => {
+    const permission = await Shizuku.checkPermission();
+    setShizukuPermission(permission);
+  };
+
+  const requestShizukuPermission = async () => {
+    const granted = await Shizuku.requestPermission();
+    setShizukuPermission(granted);
+    if (granted) {
+      Alert.alert('Success', 'Shizuku permission granted! Full system access enabled.');
+    } else {
+      Alert.alert('Permission Denied', 'Shizuku permission is required for advanced security features.');
     }
   };
 
-  const loadEnterpriseThreats = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/security/enterprise-threats`);
-      setEnterpriseThreats(response.data);
-    } catch (error) {
-      console.error('Error loading enterprise threats:', error);
+  const openShizukuApp = () => {
+    if (Platform.OS === 'android') {
+      Linking.openURL('market://details?id=moe.shizuku.privileged.api').catch(() => {
+        Linking.openURL('https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api');
+      });
     }
   };
 
-  const performScan = async (type: string = 'full') => {
+  const loadThreatDatabase = async () => {
+    const dbInfo = await ThreatDB.getDatabaseInfo();
+    if (dbInfo) {
+      setDbVersion(dbInfo.version);
+    }
+    
+    const allThreats = await ThreatDB.getDatabase();
+    if (allThreats) {
+      setThreats(allThreats.threats);
+      updateSecurityScore(allThreats.threats);
+    }
+  };
+
+  const updateThreatDatabase = async () => {
+    setDbUpdating(true);
+    const result = await ThreatDB.updateDatabase();
+    setDbUpdating(false);
+    
+    if (result.success) {
+      setDbVersion(result.version || '');
+      await loadThreatDatabase();
+      Alert.alert(
+        'Database Updated',
+        `Version: ${result.version}\nThreat signatures: ${result.threatCount}`
+      );
+    } else {
+      Alert.alert('Update Failed', 'Failed to update threat database. Check your internet connection.');
+    }
+  };
+
+  const updateSecurityScore = (detectedThreats: ThreatDefinition[]) => {
+    const criticalCount = detectedThreats.filter(t => t.threat_level === 'critical').length;
+    const highCount = detectedThreats.filter(t => t.threat_level === 'high').length;
+    const mediumCount = detectedThreats.filter(t => t.threat_level === 'medium').length;
+    
+    let score = 100;
+    score -= criticalCount * 20;
+    score -= highCount * 10;
+    score -= mediumCount * 5;
+    score = Math.max(0, score);
+    
+    setSecurityStatus({
+      security_score: score,
+      threats_active: detectedThreats.length,
+      status: detectedThreats.length === 0 ? 'secure' : 'warning',
+    });
+  };
+
+  const performFullScan = async () => {
     setScanning(true);
-    setShowScanOptions(false);
+    
     try {
-      await axios.post(`${API_URL}/api/security/scan?device_id=${deviceId}&scan_type=${type}`);
-      await loadSecurityStatus(deviceId);
-      await loadThreats(deviceId);
-      Alert.alert('Scan Complete', `${type === 'enterprise' ? 'Enterprise' : 'Full'} scan completed successfully`);
+      let detectedThreats: ThreatDefinition[] = [];
+      
+      if (shizukuPermission) {
+        // Use Shizuku to get real installed packages
+        const packages = await Shizuku.getInstalledPackages();
+        const packageNames = packages.map(p => p.packageName);
+        
+        // Filter system apps if option is disabled
+        const packagesToScan = scanSystemApps 
+          ? packageNames 
+          : packages.filter(p => !p.isSystem).map(p => p.packageName);
+        
+        // Scan against threat database
+        detectedThreats = await ThreatDB.scanPackages(packagesToScan);
+        
+        if (deepCacheAnalysis) {
+          // Get running processes for deeper analysis
+          const processes = await Shizuku.getRunningProcesses();
+          console.log(`Analyzed ${processes.length} running processes`);
+        }
+      } else {
+        // Fallback: Use threat database definitions
+        const db = await ThreatDB.getDatabase();
+        if (db) {
+          detectedThreats = db.threats;
+        }
+      }
+      
+      setThreats(detectedThreats);
+      updateSecurityScore(detectedThreats);
+      
+      Alert.alert(
+        'Scan Complete',
+        `Scanned ${shizukuPermission ? 'all installed packages' : 'known threat signatures'}\n\nThreats found: ${detectedThreats.length}\nSecurity Score: ${securityStatus.security_score}`
+      );
     } catch (error) {
-      console.error('Error performing scan:', error);
-      Alert.alert('Error', 'Failed to perform scan');
+      console.error('Scan error:', error);
+      Alert.alert('Scan Error', 'An error occurred during the security scan.');
     }
+    
     setScanning(false);
   };
 
-  const removeThreat = async (threat: any) => {
+  const removeThreat = async (threat: ThreatDefinition) => {
+    if (!shizukuPermission) {
+      Alert.alert(
+        'Shizuku Required',
+        'Shizuku permission is required to remove system threats. Please grant Shizuku access first.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Grant Permission', onPress: requestShizukuPermission },
+        ]
+      );
+      return;
+    }
+
     Alert.alert(
       'Remove Threat',
-      `Remove ${threat.app_name}?\n\nThis will uninstall the app using Shizuku.`,
+      `Are you sure you want to remove ${threat.app_name}?\n\nPackage: ${threat.package_name}\n\n${threat.is_system ? '⚠️ This is a system app. Removal may affect device functionality.' : ''}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: threat.is_system ? 'Disable' : 'Uninstall',
           style: 'destructive',
           onPress: async () => {
             try {
-              await axios.post(
-                `${API_URL}/api/security/remove-threat?device_id=${deviceId}&threat_id=${threat.id || ''}&package_name=${threat.package_name}`
-              );
-              Alert.alert('Success', `${threat.app_name} removed successfully`);
-              await loadEnterpriseThreats();
-              await loadThreats(deviceId);
+              let success: boolean;
+              if (threat.is_system) {
+                success = await Shizuku.disablePackage(threat.package_name);
+              } else {
+                success = await Shizuku.uninstallPackage(threat.package_name);
+              }
+              
+              if (success) {
+                Alert.alert('Success', `${threat.app_name} has been ${threat.is_system ? 'disabled' : 'removed'}.`);
+                // Remove from local threat list
+                setThreats(prev => prev.filter(t => t.package_name !== threat.package_name));
+                updateSecurityScore(threats.filter(t => t.package_name !== threat.package_name));
+              } else {
+                Alert.alert('Failed', 'Failed to remove the threat. Please try again.');
+              }
             } catch (error) {
-              console.error('Error removing threat:', error);
-              Alert.alert('Error', 'Failed to remove threat. Ensure Shizuku is running.');
+              console.error('Remove threat error:', error);
+              Alert.alert('Error', 'An error occurred while removing the threat.');
             }
           },
         },
@@ -120,69 +259,10 @@ export default function SecurityScreen() {
     );
   };
 
-  const updateDatabase = async () => {
-    Alert.alert('Update Threat Database', 'Download latest threat definitions?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Update',
-        onPress: async () => {
-          try {
-            const response = await axios.post(`${API_URL}/api/security/update-database`);
-            Alert.alert(
-              'Database Updated',
-              `Added: ${response.data.threats_added} threats\nUpdated: ${response.data.threats_updated} definitions\nVersion: ${response.data.database_version}`
-            );
-            await loadEnterpriseThreats();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to update database');
-          }
-        },
-      },
-    ]);
-  };
-
-  const scanNetwork = async (type: 'wifi' | 'cellular') => {
-    setNetworkScanning(true);
-    try {
-      const endpoint = type === 'wifi' ? '/api/security/wifi-scan' : '/api/security/cellular-scan';
-      const response = await axios.post(`${API_URL}${endpoint}?device_id=${deviceId}`);
-      const data = response.data;
-      
-      Alert.alert(
-        `${type === 'wifi' ? 'WiFi' : 'Cellular'} Security Scan`,
-        `Security Score: ${data.security_score}/100\n\nVulnerabilities: ${data.vulnerabilities.length}\n\n${data.vulnerabilities.map((v: any) => `• ${v.type} (${v.severity})`).join('\n')}\n\nRecommendations:\n${data.recommendations.join('\n')}`,
-        [{ text: 'OK' }]
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to scan network');
-    }
-    setNetworkScanning(false);
-  };
-
-  const performAdvancedScan = async (type: 'redhat' | 'blackhat') => {
-    setScanning(true);
-    try {
-      const endpoint = type === 'redhat' ? '/api/security/redhat-scan' : '/api/security/blackhat-scan';
-      const response = await axios.post(`${API_URL}${endpoint}?device_id=${deviceId}`);
-      const data = response.data;
-      
-      const findings = data.findings || data.finding || [];
-      Alert.alert(
-        `${type === 'redhat' ? 'Red Hat' : 'Black Hat'} Scan`,
-        `${type === 'redhat' ? 'Ethical Security Analysis' : 'Penetration Testing'}\n\nScore: ${data.security_score || data.risk_level}/100\nFindings: ${findings.length}\n\n${findings.slice(0, 3).map((f: any) => `• ${f.category || f.attack_vector}: ${f.severity}`).join('\n')}`,
-        [{ text: 'View Details', onPress: () => console.log(data) }, { text: 'OK' }]
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to perform scan');
-    }
-    setScanning(false);
-  };
-
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadSecurityStatus(deviceId);
-    await loadThreats(deviceId);
-    await loadEnterpriseThreats();
+    await checkShizukuStatus();
+    await loadThreatDatabase();
     setRefreshing(false);
   };
 
@@ -218,7 +298,7 @@ export default function SecurityScreen() {
             onPress={() => setShowEnterprise(!showEnterprise)}
           >
             <Ionicons name="business" size={20} color="#ff3366" />
-            <Text style={styles.enterpriseBadge}>{enterpriseThreats.length}</Text>
+            <Text style={styles.enterpriseBadge}>{threats.length}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -229,6 +309,71 @@ export default function SecurityScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00ff88" />
         }
       >
+        {/* Shizuku Status Card */}
+        <View style={[styles.shizukuCard, shizukuPermission && styles.shizukuCardActive]}>
+          <View style={styles.shizukuHeader}>
+            <View style={styles.shizukuTitleRow}>
+              <Ionicons 
+                name={shizukuPermission ? "shield-checkmark" : "shield-outline"} 
+                size={24} 
+                color={shizukuPermission ? "#00ff88" : "#ff9900"} 
+              />
+              <Text style={styles.shizukuTitle}>Shizuku Integration</Text>
+            </View>
+            <View style={[styles.statusIndicator, { backgroundColor: shizukuPermission ? '#00ff88' : shizukuRunning ? '#ffaa00' : '#ff3366' }]} />
+          </View>
+          
+          <View style={styles.shizukuStatus}>
+            <View style={styles.shizukuStatusItem}>
+              <Text style={styles.shizukuLabel}>Installed:</Text>
+              <Text style={[styles.shizukuValue, { color: shizukuInstalled ? '#00ff88' : '#ff3366' }]}>
+                {shizukuInstalled ? 'Yes' : 'No'}
+              </Text>
+            </View>
+            <View style={styles.shizukuStatusItem}>
+              <Text style={styles.shizukuLabel}>Running:</Text>
+              <Text style={[styles.shizukuValue, { color: shizukuRunning ? '#00ff88' : '#ff3366' }]}>
+                {shizukuRunning ? 'Yes' : 'No'}
+              </Text>
+            </View>
+            <View style={styles.shizukuStatusItem}>
+              <Text style={styles.shizukuLabel}>Permission:</Text>
+              <Text style={[styles.shizukuValue, { color: shizukuPermission ? '#00ff88' : '#ff3366' }]}>
+                {shizukuPermission ? 'Granted' : 'Denied'}
+              </Text>
+            </View>
+            {shizukuVersion > 0 && (
+              <View style={styles.shizukuStatusItem}>
+                <Text style={styles.shizukuLabel}>Version:</Text>
+                <Text style={styles.shizukuValue}>{shizukuVersion}</Text>
+              </View>
+            )}
+          </View>
+          
+          {!shizukuInstalled ? (
+            <TouchableOpacity style={styles.shizukuButton} onPress={openShizukuApp}>
+              <Ionicons name="download" size={18} color="#000" />
+              <Text style={styles.shizukuButtonText}>INSTALL SHIZUKU</Text>
+            </TouchableOpacity>
+          ) : !shizukuRunning ? (
+            <View style={styles.shizukuInstructions}>
+              <Text style={styles.instructionText}>
+                Open Shizuku app and start the service via ADB or Wireless Debugging
+              </Text>
+            </View>
+          ) : !shizukuPermission ? (
+            <TouchableOpacity style={styles.shizukuButton} onPress={requestShizukuPermission}>
+              <Ionicons name="key" size={18} color="#000" />
+              <Text style={styles.shizukuButtonText}>GRANT PERMISSION</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.shizukuActive}>
+              <Ionicons name="checkmark-circle" size={20} color="#00ff88" />
+              <Text style={styles.shizukuActiveText}>Full System Access Enabled</Text>
+            </View>
+          )}
+        </View>
+
         {/* Security Score Circle */}
         <View style={styles.scoreContainer}>
           <View style={[styles.scoreCircle, { borderColor: getScoreColor(securityStatus.security_score) }]}>
@@ -254,74 +399,95 @@ export default function SecurityScreen() {
           </View>
         </View>
 
-        {/* Scan Buttons */}
-        <View style={styles.scanButtons}>
-          <TouchableOpacity
-            style={[styles.scanButton, scanning && styles.scanButtonActive]}
-            onPress={() => performScan('full')}
-            disabled={scanning}
-          >
-            <Ionicons name="scan" size={20} color="#000" />
-            <Text style={styles.scanButtonText}>
-              {scanning ? 'SCANNING...' : 'FULL SCAN'}
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.scanButton, styles.scanButtonEnterprise, scanning && styles.scanButtonActive]}
-            onPress={() => performScan('enterprise')}
-            disabled={scanning}
-          >
-            <Ionicons name="business" size={20} color="#000" />
-            <Text style={styles.scanButtonText}>ENTERPRISE</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Developer Options */}
-        <View style={styles.developerCard}>
-          <View style={styles.developerHeader}>
-            <Ionicons name="code-slash" size={20} color="#00aaff" />
-            <Text style={styles.developerTitle}>BLU G64 Developer Scanning</Text>
-          </View>
-          <Text style={styles.developerDesc}>
-            Advanced Shizuku-powered scanning for enterprise spyware, bloatware, and system threats
+        {/* Scan Button */}
+        <TouchableOpacity
+          style={[styles.scanButton, scanning && styles.scanButtonActive]}
+          onPress={performFullScan}
+          disabled={scanning}
+        >
+          {scanning ? (
+            <ActivityIndicator color="#000" size="small" />
+          ) : (
+            <Ionicons name="scan" size={24} color="#000" />
+          )}
+          <Text style={styles.scanButtonText}>
+            {scanning ? 'SCANNING...' : 'FULL SYSTEM SCAN'}
           </Text>
-          <View style={styles.scanOptions}>
-            <View style={styles.scanOption}>
-              <Text style={styles.scanOptionText}>Scan System Apps</Text>
-              <Switch
-                value={true}
-                trackColor={{ false: '#333', true: '#00ff8840' }}
-                thumbColor="#00ff88"
-              />
+        </TouchableOpacity>
+
+        {/* Scan Options */}
+        <View style={styles.optionsCard}>
+          <Text style={styles.optionsTitle}>Scan Options</Text>
+          <View style={styles.optionRow}>
+            <View style={styles.optionInfo}>
+              <Text style={styles.optionLabel}>Scan System Apps</Text>
+              <Text style={styles.optionDesc}>Include pre-installed system applications</Text>
             </View>
-            <View style={styles.scanOption}>
-              <Text style={styles.scanOptionText}>Deep Cache Analysis</Text>
-              <Switch
-                value={true}
-                trackColor={{ false: '#333', true: '#00ff8840' }}
-                thumbColor="#00ff88"
-              />
+            <Switch
+              value={scanSystemApps}
+              onValueChange={setScanSystemApps}
+              trackColor={{ false: '#333', true: '#00ff8840' }}
+              thumbColor={scanSystemApps ? '#00ff88' : '#666'}
+            />
+          </View>
+          <View style={styles.optionRow}>
+            <View style={styles.optionInfo}>
+              <Text style={styles.optionLabel}>Deep Cache Analysis</Text>
+              <Text style={styles.optionDesc}>Analyze running processes and memory</Text>
             </View>
+            <Switch
+              value={deepCacheAnalysis}
+              onValueChange={setDeepCacheAnalysis}
+              trackColor={{ false: '#333', true: '#00ff8840' }}
+              thumbColor={deepCacheAnalysis ? '#00ff88' : '#666'}
+            />
           </View>
         </View>
 
-        {/* Enterprise Threats Section */}
-        {showEnterprise && enterpriseThreats.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Enterprise Threats Detected</Text>
-              <View style={styles.criticalBadge}>
-                <Text style={styles.criticalText}>CRITICAL</Text>
+        {/* Threat Database */}
+        <View style={styles.dbCard}>
+          <View style={styles.dbHeader}>
+            <View style={styles.dbInfo}>
+              <Ionicons name="server" size={24} color="#00aaff" />
+              <View>
+                <Text style={styles.dbTitle}>Threat Database</Text>
+                <Text style={styles.dbVersion}>Version: {dbVersion || 'Not loaded'}</Text>
               </View>
             </View>
-            {enterpriseThreats.map((threat: any, index: number) => (
-              <View key={index} style={styles.enterpriseThreatCard}>
-                <View style={styles.threatCardHeader}>
+            <TouchableOpacity 
+              style={styles.dbUpdateButton} 
+              onPress={updateThreatDatabase}
+              disabled={dbUpdating}
+            >
+              {dbUpdating ? (
+                <ActivityIndicator color="#00aaff" size="small" />
+              ) : (
+                <Ionicons name="refresh" size={20} color="#00aaff" />
+              )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.dbDesc}>
+            Signatures are fetched from GitHub repository for enterprise spyware, bloatware, and malware detection.
+          </Text>
+        </View>
+
+        {/* Detected Threats */}
+        {showEnterprise && threats.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Detected Threats ({threats.length})</Text>
+            </View>
+            {threats.map((threat, index) => (
+              <TouchableOpacity 
+                key={threat.package_name + index} 
+                style={styles.threatCard}
+                onPress={() => removeThreat(threat)}
+              >
+                <View style={styles.threatHeader}>
                   <Ionicons name="warning" size={24} color={getThreatLevelColor(threat.threat_level)} />
-                  <View style={styles.threatCardInfo}>
-                    <Text style={styles.threatCardName}>{threat.app_name}</Text>
-                    <Text style={styles.threatCardPackage}>{threat.package_name}</Text>
+                  <View style={styles.threatInfo}>
+                    <Text style={styles.threatName}>{threat.app_name}</Text>
+                    <Text style={styles.threatPackage}>{threat.package_name}</Text>
                     <View style={styles.threatTags}>
                       <View style={[styles.threatTag, { backgroundColor: getThreatLevelColor(threat.threat_level) + '30' }]}>
                         <Text style={[styles.threatTagText, { color: getThreatLevelColor(threat.threat_level) }]}>
@@ -338,9 +504,10 @@ export default function SecurityScreen() {
                       )}
                     </View>
                   </View>
+                  <Ionicons name="close-circle" size={28} color="#ff3366" />
                 </View>
-                <Text style={styles.threatCardDesc}>{threat.description}</Text>
-              </View>
+                <Text style={styles.threatDesc}>{threat.description}</Text>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -349,55 +516,27 @@ export default function SecurityScreen() {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Ionicons name="alert-circle" size={32} color="#ff3366" />
-            <Text style={styles.statNumber}>{securityStatus.threats_active}</Text>
-            <Text style={styles.statLabel}>Active Threats</Text>
+            <Text style={styles.statNumber}>{threats.filter(t => t.threat_level === 'critical' || t.threat_level === 'high').length}</Text>
+            <Text style={styles.statLabel}>Critical/High</Text>
           </View>
           <View style={styles.statCard}>
-            <Ionicons name="business" size={32} color="#ff9900" />
-            <Text style={styles.statNumber}>{enterpriseThreats.length}</Text>
-            <Text style={styles.statLabel}>Enterprise</Text>
+            <Ionicons name="warning" size={32} color="#ffaa00" />
+            <Text style={styles.statNumber}>{threats.filter(t => t.threat_level === 'medium').length}</Text>
+            <Text style={styles.statLabel}>Medium</Text>
           </View>
           <View style={styles.statCard}>
             <Ionicons name="shield-checkmark" size={32} color="#00ff88" />
-            <Text style={styles.statNumber}>24/7</Text>
-            <Text style={styles.statLabel}>Protection</Text>
+            <Text style={styles.statNumber}>{shizukuPermission ? 'FULL' : 'LIMITED'}</Text>
+            <Text style={styles.statLabel}>Access</Text>
           </View>
         </View>
 
-        {/* Security Features */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Security Features</Text>
-          <View style={styles.featureCard}>
-            <View style={styles.featureLeft}>
-              <Ionicons name="eye-off" size={24} color="#00ff88" />
-              <View style={styles.featureText}>
-                <Text style={styles.featureName}>Real-time Protection</Text>
-                <Text style={styles.featureDesc}>Active monitoring</Text>
-              </View>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <View style={styles.featureLeft}>
-              <Ionicons name="fingerprint" size={24} color="#00ff88" />
-              <View style={styles.featureText}>
-                <Text style={styles.featureName}>Shizuku Integration</Text>
-                <Text style={styles.featureDesc}>System-level access</Text>
-              </View>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <View style={styles.featureLeft}>
-              <Ionicons name="bug" size={24} color="#00ff88" />
-              <View style={styles.featureText}>
-                <Text style={styles.featureName}>Malware Scanner</Text>
-                <Text style={styles.featureDesc}>Advanced detection</Text>
-              </View>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
+        {/* Military Grade Badge */}
+        <View style={styles.militaryBadge}>
+          <Ionicons name="ribbon" size={24} color="#00ff88" />
+          <View style={styles.militaryInfo}>
+            <Text style={styles.militaryTitle}>MILITARY GRADE SECURITY</Text>
+            <Text style={styles.militaryDesc}>Powered by Shizuku • Enterprise Threat Detection</Text>
           </View>
         </View>
       </ScrollView>
@@ -446,9 +585,100 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  shizukuCard: {
+    backgroundColor: '#1a1a1a',
+    marginHorizontal: 20,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  shizukuCardActive: {
+    borderColor: '#00ff88',
+  },
+  shizukuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  shizukuTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  shizukuTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  shizukuStatus: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 12,
+  },
+  shizukuStatusItem: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  shizukuLabel: {
+    fontSize: 13,
+    color: '#999',
+  },
+  shizukuValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  shizukuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00ff88',
+    padding: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  shizukuButtonText: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  shizukuInstructions: {
+    backgroundColor: '#ff990020',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ff9900',
+  },
+  instructionText: {
+    color: '#ff9900',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  shizukuActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 8,
+  },
+  shizukuActiveText: {
+    color: '#00ff88',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   scoreContainer: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 24,
   },
   scoreCircle: {
     width: 160,
@@ -483,106 +713,108 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  scanButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
   scanButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#00ff88',
-    padding: 14,
+    marginHorizontal: 20,
+    padding: 16,
     borderRadius: 12,
-    gap: 8,
-  },
-  scanButtonEnterprise: {
-    backgroundColor: '#ff3366',
+    gap: 10,
+    marginBottom: 20,
   },
   scanButtonActive: {
     opacity: 0.7,
   },
   scanButtonText: {
     color: '#000',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 1,
   },
-  developerCard: {
-    backgroundColor: '#00aaff20',
+  optionsCard: {
+    backgroundColor: '#1a1a1a',
+    marginHorizontal: 20,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  optionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  optionInfo: {
+    flex: 1,
+  },
+  optionLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  optionDesc: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  dbCard: {
+    backgroundColor: '#00aaff15',
     marginHorizontal: 20,
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#00aaff',
+    borderColor: '#00aaff40',
   },
-  developerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  developerTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#00aaff',
-  },
-  developerDesc: {
-    fontSize: 12,
-    color: '#00aaff',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  scanOptions: {
-    gap: 8,
-  },
-  scanOption: {
+  dbHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-    padding: 12,
-    borderRadius: 8,
+    marginBottom: 8,
   },
-  scanOptionText: {
-    fontSize: 13,
+  dbInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dbTitle: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#00aaff',
+  },
+  dbVersion: {
+    fontSize: 11,
+    color: '#00aaff99',
+  },
+  dbUpdateButton: {
+    padding: 8,
+  },
+  dbDesc: {
+    fontSize: 11,
+    color: '#00aaff99',
+    lineHeight: 16,
   },
   section: {
     paddingHorizontal: 20,
     marginBottom: 24,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
   },
-  criticalBadge: {
-    backgroundColor: '#ff003320',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ff0033',
-  },
-  criticalText: {
-    color: '#ff0033',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  enterpriseThreatCard: {
+  threatCard: {
     backgroundColor: '#1a1a1a',
     padding: 16,
     borderRadius: 12,
@@ -590,30 +822,30 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#ff3366',
   },
-  threatCardHeader: {
+  threatHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  threatCardInfo: {
+  threatInfo: {
     flex: 1,
-    gap: 4,
   },
-  threatCardName: {
+  threatName: {
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
   },
-  threatCardPackage: {
+  threatPackage: {
     fontSize: 11,
     color: '#999',
-    fontFamily: 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginTop: 2,
   },
   threatTags: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 6,
+    marginTop: 8,
     flexWrap: 'wrap',
   },
   threatTag: {
@@ -628,7 +860,7 @@ const styles = StyleSheet.create({
     color: '#999',
     letterSpacing: 0.5,
   },
-  threatCardDesc: {
+  threatDesc: {
     fontSize: 12,
     color: '#999',
     lineHeight: 18,
@@ -654,40 +886,35 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#999',
     marginTop: 4,
     textAlign: 'center',
   },
-  featureCard: {
+  militaryBadge: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#00ff8815',
+    marginHorizontal: 20,
     padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
-  },
-  featureLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 32,
     gap: 12,
+    borderWidth: 1,
+    borderColor: '#00ff8840',
   },
-  featureText: {
-    gap: 4,
+  militaryInfo: {
+    flex: 1,
   },
-  featureName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
+  militaryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#00ff88',
+    letterSpacing: 1,
   },
-  featureDesc: {
-    fontSize: 12,
-    color: '#999',
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  militaryDesc: {
+    fontSize: 11,
+    color: '#00ff8899',
+    marginTop: 2,
   },
 });
