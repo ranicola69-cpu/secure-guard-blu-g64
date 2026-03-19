@@ -2,7 +2,20 @@
 
 **Powered by Shizuku** | **For Blu G64 Android Devices**
 
+[![Download APK](https://img.shields.io/badge/Download-APK-brightgreen?style=for-the-badge&logo=android)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/latest/download/SecureGuard.apk)
+[![GitHub release](https://img.shields.io/github/v/release/ranicola69-cpu/secure-guard-blu-g64?style=for-the-badge)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-ff69b4.svg?style=for-the-badge)](https://www.paypal.com/paypalme/95weisland88@gmail.com)
+
 A comprehensive security application that leverages Shizuku framework to provide military-grade security features including system cache cleaning, app management, VPN services, and DNS configuration.
+
+---
+
+## 📥 Quick Download
+
+**[⬇️ Download APK (Latest Release)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/latest)**
+
+Install directly on your Blu G64 device!
 
 ---
 
