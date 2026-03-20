@@ -51,6 +51,7 @@ coverage/
 *.db
 *.sqlite
 *.sqlite3
+data/
 
 # Build
 android/
