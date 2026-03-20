@@ -63,7 +63,7 @@ export default function SplashScreen() {
       </Animated.View>
       
       <View style={styles.footer}>
-        <Text style={styles.versionText}>v1.3.1</Text>
+        <Text style={styles.versionText}>v1.3.2</Text>
       </View>
     </View>
   );
