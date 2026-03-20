@@ -46,6 +46,7 @@ export default function SplashScreen() {
         </View>
         <Text style={styles.title}>SECURE GUARD</Text>
         <Text style={styles.subtitle}>Military Grade Security</Text>
+        <Text style={styles.customFont}>Doctor Power House</Text>
         
         <View style={styles.badge}>
           <Text style={styles.badgeText}>POWERED BY SHIZUKU</Text>
@@ -92,8 +93,17 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#999',
-    marginBottom: 24,
+    marginBottom: 12,
     letterSpacing: 1,
+  },
+  customFont: {
+    fontFamily: 'AshleyNicole',
+    fontSize: 28,
+    color: '#00ff88',
+    marginBottom: 24,
+    textShadowColor: '#00ff8850',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   badge: {
     backgroundColor: '#00ff8820',

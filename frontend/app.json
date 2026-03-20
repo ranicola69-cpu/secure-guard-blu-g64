@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure Guard",
     "slug": "secure-guard-dphms",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secureguard",
@@ -17,7 +17,7 @@
         "backgroundColor": "#0a0a0a"
       },
       "package": "com.dphms.secureguard",
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "bundler": "metro",
