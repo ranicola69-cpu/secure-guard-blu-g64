@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build & Release Android APK
 
 on:
   workflow_dispatch:
@@ -31,11 +31,33 @@ jobs:
         working-directory: frontend
         run: yarn install
 
-      - name: Build APK
+      - name: Build APK (EAS Cloud)
+        id: build
         working-directory: frontend
-        run: eas build -p android --profile preview --non-interactive --output /tmp/secure-guard.apk
+        run: |
+          BUILD_URL=$(eas build -p android --profile preview --non-interactive --json 2>/dev/null | python3 -c "import json,sys; builds=json.load(sys.stdin); print(builds[0].get('artifacts',{}).get('buildUrl',''))" 2>/dev/null || true)
+          # Alternatively, wait for build and get URL
+          eas build -p android --profile preview --non-interactive --wait 2>&1 | tee /tmp/eas-output.txt
+          APK_URL=$(grep -oP "https://expo.dev/artifacts/eas/[^ ]+" /tmp/eas-output.txt | tail -1 || grep -oP "https://[^ ]+\.apk" /tmp/eas-output.txt | tail -1)
+          echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
+          echo "Build URL: $APK_URL"
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        run: |
+          APK_URL="${{ steps.build.outputs.apk_url }}"
+          if [ -n "$APK_URL" ]; then
+            curl -L "$APK_URL" -o /tmp/secure-guard-v${{ steps.version.outputs.version }}.apk
+          else
+            # Fallback: get latest build artifact via EAS API
+            ARTIFACT=$(curl -s -X POST "https://api.expo.dev/graphql" \
+              -H "Authorization: Bearer ${{ secrets.EXPO_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ app { byId(appId: \"96ef22e1-4227-40ef-babf-53267082794a\") { builds(limit:1,offset:0,filter:{platform:ANDROID,status:FINISHED}) { id artifacts { applicationArchiveUrl } } } } }"}' \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['app']['byId']['builds'][0]['artifacts']['applicationArchiveUrl'])")
+            curl -L "$ARTIFACT" -o /tmp/secure-guard.apk
+          fi
 
       - name: Get app version
         id: version
@@ -45,11 +67,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: "Secure Guard v${{ steps.version.outputs.version }}"
+          name: "Secure Guard v${{ steps.version.outputs.version }} - SDK 55"
           body: |
             ## Secure Guard v${{ steps.version.outputs.version }}
             
-            ### What's New
+            ### Whats New
             - Upgraded to Expo SDK 55 (fixes boot crash on Blu G64)
             - Updated React Native to 0.79.2
             - All dependencies updated for SDK 55
@@ -63,7 +85,7 @@ jobs:
             
             ### Install
             Download `secure-guard.apk` below and sideload on your Blu G64.
-          files: /tmp/secure-guard.apk
+          files: /tmp/secure-guard*.apk
           draft: false
           prerelease: false
           make_latest: true
