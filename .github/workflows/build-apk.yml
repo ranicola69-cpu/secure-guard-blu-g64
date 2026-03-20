@@ -1,0 +1,70 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install
+
+      - name: Build APK
+        working-directory: frontend
+        run: eas build -p android --profile preview --non-interactive --output /tmp/secure-guard.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Get app version
+        id: version
+        run: echo "version=$(node -p "require('./frontend/app.json').expo.version")" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Secure Guard v${{ steps.version.outputs.version }}"
+          body: |
+            ## Secure Guard v${{ steps.version.outputs.version }}
+            
+            ### What's New
+            - Upgraded to Expo SDK 55 (fixes boot crash on Blu G64)
+            - Updated React Native to 0.79.2
+            - All dependencies updated for SDK 55
+            
+            ### Features
+            - Enterprise spyware detection (TracFone, Facebook, Managed Provisioning)
+            - Cache cleaner via Shizuku
+            - Free worldwide VPN (8 servers)
+            - DNS manager with DoH support
+            - Military-grade security for Blu G64
+            
+            ### Install
+            Download `secure-guard.apk` below and sideload on your Blu G64.
+          files: /tmp/secure-guard.apk
+          draft: false
+          prerelease: false
+          make_latest: true
+
