@@ -11,8 +11,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width, height } = Dimensions.get('window');
-
 interface DonationSplashProps {
   onDismiss: () => void;
 }
@@ -22,6 +20,7 @@ const SPLASH_COUNT_KEY = 'donation_splash_count';
 const MAX_SPLASH_COUNT = 5;
 
 export default function DonationSplash({ onDismiss }: DonationSplashProps) {
+  const { width, height } = Dimensions.get('window');
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.8));
 

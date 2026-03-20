@@ -1,12 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SplashScreen() {
   const router = useRouter();
-  const fadeAnim = new Animated.Value(0);
-  const scaleAnim = new Animated.Value(0.5);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -63,7 +63,7 @@ export default function SplashScreen() {
       </Animated.View>
       
       <View style={styles.footer}>
-        <Text style={styles.versionText}>v1.4.2</Text>
+        <Text style={styles.versionText}>v1.5.0 - STABLE</Text>
       </View>
     </View>
   );
