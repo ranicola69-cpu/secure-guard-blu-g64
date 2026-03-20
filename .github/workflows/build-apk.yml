@@ -34,13 +34,21 @@ jobs:
         working-directory: frontend
         run: yarn install
 
+      - name: Verify icon files
+        working-directory: frontend
+        run: |
+          echo "📸 Checking icon files..."
+          ls -lh assets/images/icon.png assets/images/adaptive-icon.png
+          echo "✅ Icons present"
+
       - name: Build APK (EAS Cloud)
         id: build
         working-directory: frontend
         run: |
-          BUILD_URL=$(eas build -p android --profile preview --non-interactive --json 2>/dev/null | python3 -c "import json,sys; builds=json.load(sys.stdin); print(builds[0].get('artifacts',{}).get('buildUrl',''))" 2>/dev/null || true)
-          # Alternatively, wait for build and get URL
-          eas build -p android --profile preview --non-interactive --wait 2>&1 | tee /tmp/eas-output.txt
+          echo "🧹 Clearing EAS cache..."
+          eas build:cancel -p android --non-interactive || true
+          echo "🚀 Building with fresh cache..."
+          eas build -p android --profile preview --non-interactive --clear-cache --wait 2>&1 | tee /tmp/eas-output.txt
           APK_URL=$(grep -oP "https://expo.dev/artifacts/eas/[^ ]+" /tmp/eas-output.txt | tail -1 || grep -oP "https://[^ ]+\.apk" /tmp/eas-output.txt | tail -1)
           echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
           echo "Build URL: $APK_URL"
