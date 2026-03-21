@@ -36,7 +36,7 @@ jobs:
         working-directory: frontend
         run: yarn install --ignore-engines --frozen-lockfile
 
-      - name: Apply Gradle compatibility patches
+      - name: Apply Gradle plugin compatibility patches
         run: python3 .github/scripts/apply-gradle-patches.py
 
       - name: Install Android NDK 27
@@ -48,20 +48,16 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
         run: npx expo prebuild --platform android --no-install
 
-      - name: Pin Gradle to 8.10.2 (expo prebuild sets 9.0.0 which breaks RN plugin)
+      - name: Pin Gradle to 8.10.2
         run: |
-          echo "distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.10.2-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists" > frontend/android/gradle/wrapper/gradle-wrapper.properties
+          printf 'distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n' \
+            > frontend/android/gradle/wrapper/gradle-wrapper.properties
           echo "Gradle pinned to 8.10.2"
 
-      - name: Fix Hermes compiler path in app/build.gradle
-        run: python3 .github/scripts/fix-hermes-path.py
-
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_HOME" > frontend/android/local.properties
+      - name: Apply Android build patches (hermes path + core-ktx version fix)
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: python3 .github/scripts/fix-android-build.py
 
       - name: Build Debug APK
         working-directory: frontend/android
