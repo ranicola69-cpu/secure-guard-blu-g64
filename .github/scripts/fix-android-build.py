@@ -497,4 +497,48 @@ else:
     print(f"[--] CurrentActivityNotFoundException.kt already exists")
 
 
+
+# ─── 9. Fix expo/ExpoReactHostFactory.kt (named args banned for Java in K2) ──
+# Kotlin K2 compiler (2.x) does not allow named arguments for Java methods
+# when parameter names are not stored in bytecode (shown as p0, p1 ...).
+# ReactHostImpl is a Java class; use positional arguments instead.
+
+EXPO_HOST_FACTORY = (
+    "frontend/node_modules/expo/android/src/main/java/expo/modules"
+    "/ExpoReactHostFactory.kt"
+)
+
+if os.path.exists(EXPO_HOST_FACTORY):
+    with open(EXPO_HOST_FACTORY, "r") as f:
+        factory_content = f.read()
+
+    OLD_CALL = """      val reactHostImpl =
+        ReactHostImpl(
+          context,
+          delegate = reactHostDelegate,
+          componentFactory = componentFactory,
+          allowPackagerServerAccess = true,
+          useDevSupport = useDevSupport
+        )"""
+
+    NEW_CALL = """      val reactHostImpl =
+        ReactHostImpl(
+          context,
+          reactHostDelegate,
+          componentFactory,
+          true,
+          useDevSupport
+        )"""
+
+    if OLD_CALL in factory_content:
+        factory_content = factory_content.replace(OLD_CALL, NEW_CALL)
+        with open(EXPO_HOST_FACTORY, "w") as f:
+            f.write(factory_content)
+        print(f"[OK] Patched ExpoReactHostFactory.kt to use positional ReactHostImpl args")
+    else:
+        print(f"[--] ExpoReactHostFactory.kt already patched or uses different format")
+else:
+    print(f"[!!] {EXPO_HOST_FACTORY} not found — skipping")
+
+
 print("\nAll android build patches applied.")
