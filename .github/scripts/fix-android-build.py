@@ -907,4 +907,94 @@ if os.path.exists(WORKLETS_MODULE_LEGACY):
 else:
     print(f"[!!] Patch 14: {WORKLETS_MODULE_LEGACY} not found")
 
+# ── Patch 15: Fix expo-modules-core C++ for worklets 0.5.1 API changes ────────────────────────
+# A) Serializable.cpp: remove CustomType case (removed from worklets 0.5.1 ValueType enum)
+# B) Worklet.cpp: replace runSync→executeSync and schedule(SerializableWorklet)→runAsyncGuarded
+SERIALIZABLE_CPP = os.path.join(
+    "frontend", "node_modules", "expo-modules-core",
+    "android", "src", "main", "cpp", "worklets", "Serializable.cpp"
+)
+WORKLET_CPP = os.path.join(
+    "frontend", "node_modules", "expo-modules-core",
+    "android", "src", "main", "cpp", "worklets", "Worklet.cpp"
+)
+
+# 15A: Remove CustomType case from Serializable.cpp
+if os.path.exists(SERIALIZABLE_CPP):
+    with open(SERIALIZABLE_CPP, "r") as f:
+        sc = f.read()
+    if "CustomType" in sc:
+        OLD_CUSTOM = (
+            "    case worklets::Serializable::ValueType::CustomType:\n"
+            "      return 20;\n"
+        )
+        if OLD_CUSTOM in sc:
+            sc = sc.replace(OLD_CUSTOM, "", 1)
+            with open(SERIALIZABLE_CPP, "w") as f:
+                f.write(sc)
+            print("[OK] Patch 15A: removed CustomType case from Serializable.cpp")
+        else:
+            print("[!!] Patch 15A: CustomType anchor not found in Serializable.cpp")
+    else:
+        print("[--] Patch 15A: CustomType already removed")
+else:
+    print(f"[!!] Patch 15A: {SERIALIZABLE_CPP} not found")
+
+# 15B: Fix Worklet.cpp
+if os.path.exists(WORKLET_CPP):
+    with open(WORKLET_CPP, "r") as f:
+        wc = f.read()
+    changed_wc = False
+    # Fix 1: schedule(SerializableWorklet) → runAsyncGuarded
+    OLD_SCHED = "  workletRuntime->schedule(std::move(worklet));\n}"
+    NEW_SCHED = "  workletRuntime->runAsyncGuarded(worklet);\n}"
+    if OLD_SCHED in wc:
+        wc = wc.replace(OLD_SCHED, NEW_SCHED, 1)
+        changed_wc = True
+        print("[OK] Patch 15B-1: schedule(SerializableWorklet) -> runAsyncGuarded")
+    elif "runAsyncGuarded" in wc:
+        print("[--] Patch 15B-1: already using runAsyncGuarded")
+    else:
+        print("[!!] Patch 15B-1: schedule anchor not found in Worklet.cpp")
+    # Fix 2: runSync(worklet) → executeSync lambda
+    OLD_RUNSYNC1 = "  workletRuntime->runSync(worklet);\n}"
+    NEW_RUNSYNC1 = (
+        "  workletRuntime->executeSync([&worklet](jsi::Runtime &rt) -> jsi::Value {\n"
+        "    auto func = worklet->toJSValue(rt).asObject(rt).asFunction(rt);\n"
+        "    return func.call(rt);\n"
+        "  });\n"
+        "}"
+    )
+    if OLD_RUNSYNC1 in wc:
+        wc = wc.replace(OLD_RUNSYNC1, NEW_RUNSYNC1, 1)
+        changed_wc = True
+        print("[OK] Patch 15B-2: runSync(worklet) -> executeSync lambda")
+    elif "executeSync([&worklet]" in wc:
+        print("[--] Patch 15B-2: already using executeSync")
+    else:
+        print("[!!] Patch 15B-2: runSync(worklet) anchor not found in Worklet.cpp")
+    # Fix 3: runSync([&args, &worklet]...) → executeSync returning undefined
+    OLD_RUNSYNC2 = "  workletRuntime->runSync([&args, &worklet](jsi::Runtime &rt) {"
+    NEW_RUNSYNC2 = "  workletRuntime->executeSync([&args, &worklet](jsi::Runtime &rt) -> jsi::Value {"
+    OLD_RUNSYNC2_END = "  });\n}"
+    NEW_RUNSYNC2_END = "    return jsi::Value::undefined();\n  });\n}"
+    if OLD_RUNSYNC2 in wc:
+        wc = wc.replace(OLD_RUNSYNC2, NEW_RUNSYNC2, 1)
+        # Add return statement before closing brace
+        OLD_CLOSE = "    func.call(\n      rt,\n      (const jsi::Value *) convertedArgs.data(),\n      convertedArgs.size()\n    );\n  });\n}"
+        NEW_CLOSE = "    func.call(\n      rt,\n      (const jsi::Value *) convertedArgs.data(),\n      convertedArgs.size()\n    );\n    return jsi::Value::undefined();\n  });\n}"
+        if OLD_CLOSE in wc:
+            wc = wc.replace(OLD_CLOSE, NEW_CLOSE, 1)
+        changed_wc = True
+        print("[OK] Patch 15B-3: runSync([&args,&worklet]...) -> executeSync")
+    elif "executeSync([&args, &worklet]" in wc:
+        print("[--] Patch 15B-3: already using executeSync with args")
+    else:
+        print("[!!] Patch 15B-3: runSync([&args,&worklet]...) anchor not found")
+    if changed_wc:
+        with open(WORKLET_CPP, "w") as f:
+            f.write(wc)
+else:
+    print(f"[!!] Patch 15B: {WORKLET_CPP} not found")
+
 print("\nAll android build patches applied.")
