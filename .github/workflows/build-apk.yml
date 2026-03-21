@@ -48,6 +48,15 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
         run: npx expo prebuild --platform android --no-install
 
+      - name: Pin Gradle to 8.10.2 (expo prebuild sets 9.0.0 which breaks RN plugin)
+        run: |
+          echo "distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.10.2-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists" > frontend/android/gradle/wrapper/gradle-wrapper.properties
+          echo "Gradle pinned to 8.10.2"
+
       - name: Fix Hermes compiler path in app/build.gradle
         run: python3 .github/scripts/fix-hermes-path.py
 
