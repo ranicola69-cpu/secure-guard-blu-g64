@@ -708,4 +708,113 @@ else:
     print(f"[!!] {WORKLET_RUNTIME_CPP} not found")
 
 
+
+# ─── 12. Restore WorkletRuntime::getWeakRuntimeFromJSIRuntime (removed in 0.5.1) ──
+# expo-modules-core WorkletRuntimeInstaller.cpp and WorkletNativeRuntime.cpp call
+# worklets::WorkletRuntime::getWeakRuntimeFromJSIRuntime(jsi::Runtime &rt) which was
+# removed in react-native-worklets 0.5.1. We re-add it via a static registry
+# (jsi::Runtime* -> weak_ptr<WorkletRuntime>) populated in WorkletRuntime::init().
+
+WORKLET_RT_H = (
+    "frontend/node_modules/react-native-worklets/Common/cpp/worklets"
+    "/WorkletRuntime/WorkletRuntime.h"
+)
+WORKLET_RT_CPP = (
+    "frontend/node_modules/react-native-worklets/Common/cpp/worklets"
+    "/WorkletRuntime/WorkletRuntime.cpp"
+)
+
+# --- patch header ---
+if os.path.exists(WORKLET_RT_H):
+    with open(WORKLET_RT_H, "r") as f:
+        h = f.read()
+
+    if "getWeakRuntimeFromJSIRuntime" not in h:
+        # 1) Add <map> and <mutex> includes after existing includes
+        h = h.replace(
+            "#include <memory>",
+            "#include <memory>\n#include <map>\n#include <mutex>"
+        )
+        # 2) Add static registry fields and getWeakRuntimeFromJSIRuntime before private section
+        OLD_PRIVATE = "  const std::shared_ptr<std::recursive_mutex> runtimeMutex_;"
+        NEW_PRIVATE = (
+            "  static std::weak_ptr<WorkletRuntime> getWeakRuntimeFromJSIRuntime(jsi::Runtime &rt);\n"
+            "  static void registerInRuntimeRegistry(jsi::Runtime &rt, std::weak_ptr<WorkletRuntime> wr);\n"
+            "  static void unregisterFromRuntimeRegistry(jsi::Runtime &rt);\n"
+            "\n"
+            "  static std::map<jsi::Runtime *, std::weak_ptr<WorkletRuntime>> sRuntimeRegistry_;\n"
+            "  static std::mutex sRegistryMutex_;\n"
+            "\n"
+            "  const std::shared_ptr<std::recursive_mutex> runtimeMutex_;"
+        )
+        if OLD_PRIVATE in h:
+            h = h.replace(OLD_PRIVATE, NEW_PRIVATE)
+            with open(WORKLET_RT_H, "w") as f:
+                f.write(h)
+            print("[OK] WorkletRuntime.h: added getWeakRuntimeFromJSIRuntime declaration + registry fields")
+        else:
+            print("[!!] WorkletRuntime.h: could not find private section anchor")
+    else:
+        print("[--] WorkletRuntime.h: getWeakRuntimeFromJSIRuntime already present")
+else:
+    print(f"[!!] {WORKLET_RT_H} not found")
+
+# --- patch implementation ---
+if os.path.exists(WORKLET_RT_CPP):
+    with open(WORKLET_RT_CPP, "r") as f:
+        cpp = f.read()
+
+    if "getWeakRuntimeFromJSIRuntime" not in cpp:
+        # 1) Add static field definitions after namespace line
+        OLD_NS = "namespace worklets {"
+        NEW_NS = (
+            "namespace worklets {\n\n"
+            "std::map<jsi::Runtime *, std::weak_ptr<WorkletRuntime>> WorkletRuntime::sRuntimeRegistry_{};\n"
+            "std::mutex WorkletRuntime::sRegistryMutex_{};\n\n"
+            "std::weak_ptr<WorkletRuntime> WorkletRuntime::getWeakRuntimeFromJSIRuntime(jsi::Runtime &rt) {\n"
+            "  std::lock_guard<std::mutex> lock(sRegistryMutex_);\n"
+            "  auto it = sRuntimeRegistry_.find(&rt);\n"
+            "  if (it != sRuntimeRegistry_.end()) {\n"
+            "    return it->second;\n"
+            "  }\n"
+            "  return std::weak_ptr<WorkletRuntime>{};\n"
+            "}\n\n"
+            "void WorkletRuntime::registerInRuntimeRegistry(jsi::Runtime &rt, std::weak_ptr<WorkletRuntime> wr) {\n"
+            "  std::lock_guard<std::mutex> lock(sRegistryMutex_);\n"
+            "  sRuntimeRegistry_[&rt] = std::move(wr);\n"
+            "}\n\n"
+            "void WorkletRuntime::unregisterFromRuntimeRegistry(jsi::Runtime &rt) {\n"
+            "  std::lock_guard<std::mutex> lock(sRegistryMutex_);\n"
+            "  sRuntimeRegistry_.erase(&rt);\n"
+            "}\n"
+        )
+        cpp = cpp.replace(OLD_NS, NEW_NS, 1)
+
+        # 2) Register in init() so shared_from_this() is available
+        OLD_INIT_BODY = (
+            "void WorkletRuntime::init(\n"
+            "    std::shared_ptr<JSIWorkletsModuleProxy> jsiWorkletsModuleProxy) {\n"
+            "  jsi::Runtime &rt = *runtime_;"
+        )
+        NEW_INIT_BODY = (
+            "void WorkletRuntime::init(\n"
+            "    std::shared_ptr<JSIWorkletsModuleProxy> jsiWorkletsModuleProxy) {\n"
+            "  jsi::Runtime &rt = *runtime_;\n"
+            "  WorkletRuntime::registerInRuntimeRegistry(rt, weak_from_this());"
+        )
+        if OLD_INIT_BODY in cpp:
+            cpp = cpp.replace(OLD_INIT_BODY, NEW_INIT_BODY)
+
+        # No destructor needed: the registry stores weak_ptr entries.
+        # When WorkletRuntime is destroyed, existing weak_ptr entries expire naturally.
+
+        with open(WORKLET_RT_CPP, "w") as f:
+            f.write(cpp)
+        print("[OK] WorkletRuntime.cpp: added static registry + getWeakRuntimeFromJSIRuntime impl + init() registration")
+    else:
+        print("[--] WorkletRuntime.cpp: getWeakRuntimeFromJSIRuntime already present")
+else:
+    print(f"[!!] {WORKLET_RT_CPP} not found")
+
+
 print("\nAll android build patches applied.")
