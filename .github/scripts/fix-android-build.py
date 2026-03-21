@@ -130,4 +130,130 @@ else:
     print(f"[!!] {ACCESSOR_FILE} not found — skipping")
 
 
+
+# ─── 5. Fix expo-constants/ConstantsService.kt (Kotlin property vs method) ───
+# expo-modules-core ConstantsInterface switched from Java-style methods
+# (getConstants(), getAppScopeKey() …) to Kotlin properties
+# (val constants, val appScopeKey …).
+# The ConstantsService.kt shipped with expo-constants@17 still uses the old
+# Java-style overrides, causing "overrides nothing" / "not abstract" errors.
+
+CONSTANTS_SERVICE = (
+    "frontend/node_modules/expo-constants/android/src/main/java"
+    "/expo/modules/constants/ConstantsService.kt"
+)
+
+FIXED_CONSTANTS_SERVICE = """\
+package expo.modules.constants
+
+import org.apache.commons.io.IOUtils
+
+import expo.modules.core.interfaces.InternalModule
+import expo.modules.interfaces.constants.ConstantsInterface
+
+import android.os.Build
+import android.util.Log
+import android.content.Context
+
+import java.io.FileNotFoundException
+import java.lang.Exception
+import java.nio.charset.StandardCharsets
+import java.util.*
+
+private val TAG = ConstantsService::class.java.simpleName
+private const val CONFIG_FILE_NAME = "app.config"
+
+open class ConstantsService(private val context: Context) : InternalModule, ConstantsInterface {
+  var statusBarHeightInternal = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+    .takeIf { it > 0 }
+    ?.let { (context.resources::getDimensionPixelSize)(it) }
+    ?.let { pixels -> convertPixelsToDp(pixels.toFloat(), context) }
+    ?: 0
+
+  private val sessionId = UUID.randomUUID().toString()
+
+  enum class ExecutionEnvironment(val string: String) {
+    BARE("bare"),
+    STANDALONE("standalone"),
+    STORE_CLIENT("storeClient")
+  }
+
+  override fun getExportedInterfaces(): List<Class<*>> = listOf(ConstantsInterface::class.java)
+
+  override val constants: Map<String, Any?>
+    get() = mutableMapOf(
+      "sessionId" to sessionId,
+      "executionEnvironment" to ExecutionEnvironment.BARE.string,
+      "statusBarHeight" to statusBarHeightInternal,
+      "deviceName" to deviceName,
+      "systemFonts" to systemFonts,
+      "systemVersion" to systemVersion,
+      "manifest" to appConfig,
+      "platform" to mapOf<String, Map<String, Any>>("android" to emptyMap())
+    )
+
+  override val appScopeKey: String?
+    get() = context.packageName
+
+  override val deviceName: String
+    get() = Build.MODEL
+
+  override val statusBarHeight: Int
+    get() = statusBarHeightInternal
+
+  override val systemVersion: String
+    get() = Build.VERSION.RELEASE
+
+  override val systemFonts: List<String>
+    get() = listOf(
+      "normal",
+      "notoserif",
+      "sans-serif",
+      "sans-serif-light",
+      "sans-serif-thin",
+      "sans-serif-condensed",
+      "sans-serif-medium",
+      "serif",
+      "Roboto",
+      "monospace"
+    )
+
+  private val appConfig: String?
+    get() {
+      try {
+        context.assets.open(CONFIG_FILE_NAME).use { stream ->
+          return IOUtils.toString(stream, StandardCharsets.UTF_8)
+        }
+      } catch (e: FileNotFoundException) {
+        // do nothing, expected in managed apps
+      } catch (e: Exception) {
+        Log.e(TAG, "Error reading embedded app config", e)
+      }
+      return null
+    }
+
+  companion object {
+    private fun convertPixelsToDp(px: Float, context: Context): Int {
+      val resources = context.resources
+      val metrics = resources.displayMetrics
+      val dp = px / (metrics.densityDpi / 160f)
+      return dp.toInt()
+    }
+  }
+}
+"""
+
+if os.path.exists(CONSTANTS_SERVICE):
+    with open(CONSTANTS_SERVICE, "r") as f:
+        cs_content = f.read()
+    if "override fun getConstants" in cs_content:
+        with open(CONSTANTS_SERVICE, "w") as f:
+            f.write(FIXED_CONSTANTS_SERVICE)
+        print(f"[OK] Patched ConstantsService.kt to use Kotlin property syntax")
+    else:
+        print(f"[--] ConstantsService.kt already uses property syntax")
+else:
+    print(f"[!!] {CONSTANTS_SERVICE} not found — skipping")
+
+
 print("\nAll android build patches applied.")
