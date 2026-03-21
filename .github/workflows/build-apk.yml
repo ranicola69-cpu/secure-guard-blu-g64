@@ -8,6 +8,7 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/build-apk.yml'
+      - '.github/scripts/**'
 
 jobs:
   build:
@@ -28,7 +29,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Yarn
+      - name: Install Yarn 1
         run: npm install -g yarn@1
 
       - name: Install frontend dependencies
@@ -36,144 +37,67 @@ jobs:
         run: yarn install --ignore-engines --frozen-lockfile
 
       - name: Apply Gradle compatibility patches
-        working-directory: frontend
-        run: |
-          python3 << 'PYEOF'
-          import os
-
-          SHIM = '''
-// Compatibility shim: provides .extra extension property on ExtensionAware types
-private val org.gradle.api.plugins.ExtensionAware.extra: org.gradle.api.plugins.ExtraPropertiesExtension
-    get() = extensions.extraProperties
-
-'''
-
-          FILES_TO_PATCH = [
-            "node_modules/expo-modules-core/expo-module-gradle-plugin/src/main/kotlin/expo/modules/plugin/ExpoModulesGradlePlugin.kt",
-            "node_modules/expo-modules-core/expo-module-gradle-plugin/src/main/kotlin/expo/modules/plugin/ProjectConfiguration.kt",
-            "node_modules/expo-modules-autolinking/android/expo-gradle-plugin/expo-autolinking-plugin/src/main/kotlin/expo/modules/plugin/ExpoRootProjectPlugin.kt",
-          ]
-
-          for filepath in FILES_TO_PATCH:
-            if not os.path.exists(filepath):
-              print(f"SKIP (not found): {filepath}")
-              continue
-            with open(filepath, 'r') as f:
-              content = f.read()
-            if 'Compatibility shim' in content:
-              print(f"Already patched: {filepath}")
-              continue
-            lines = content.split('\n')
-            last_import_idx = -1
-            for i, line in enumerate(lines):
-              if line.startswith('import '):
-                last_import_idx = i
-            if last_import_idx >= 0:
-              lines.insert(last_import_idx + 1, SHIM)
-              with open(filepath, 'w') as f:
-                f.write('\n'.join(lines))
-              print(f"Patched: {filepath}")
-            else:
-              print(f"No import found (skipped): {filepath}")
-          PYEOF
+        run: python3 .github/scripts/apply-gradle-patches.py
 
       - name: Install Android NDK 27
-        run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" 2>&1 | tail -3
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" 2>&1 | tail -5
 
       - name: Run Expo Prebuild
         working-directory: frontend
         env:
-          EXPO_NO_TELEMETRY: 1
+          EXPO_NO_TELEMETRY: '1'
         run: npx expo prebuild --platform android --no-install
 
-      - name: Patch app/build.gradle (fix hermes-compiler path)
-        run: |
-          python3 << 'PYEOF'
-          filepath = "frontend/android/app/build.gradle"
-          with open(filepath, 'r') as f:
-            content = f.read()
+      - name: Fix Hermes compiler path in app/build.gradle
+        run: python3 .github/scripts/fix-hermes-path.py
 
-          old = (
-            "hermesCommand = new File([\"node\", \"--print\", "
-            "\"require.resolve('hermes-compiler/package.json', "
-            "{ paths: [require.resolve('react-native/package.json')] })\"]"
-            ".execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() "
-            "+ \"/hermesc/%OS-BIN%/hermesc\""
-          )
-          new = (
-            "hermesCommand = new File([\"node\", \"--print\", "
-            "\"require.resolve('react-native/package.json')\"]"
-            ".execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() "
-            "+ \"/sdks/hermesc/%OS-BIN%/hermesc\""
-          )
-
-          if old in content:
-            content = content.replace(old, new)
-            with open(filepath, 'w') as f:
-              f.write(content)
-            print("Patched hermesCommand in app/build.gradle")
-          elif 'hermes-compiler' not in content:
-            print("hermesCommand already uses react-native/sdks path — no patch needed")
-          else:
-            print("WARNING: Could not find exact old string, trying fallback sed...")
-          PYEOF
-
-          # Fallback sed patch if python didn't match
-          if grep -q "hermes-compiler" frontend/android/app/build.gradle; then
-            sed -i \
-              "s|require.resolve('hermes-compiler/package.json', { paths: \[require.resolve('react-native/package.json')\] })|require.resolve('react-native/package.json')|g" \
-              frontend/android/app/build.gradle
-            sed -i \
-              "s|).getParentFile().getAbsolutePath() + \"/hermesc/%OS-BIN%/hermesc\"|).getParentFile().getAbsolutePath() + \"/sdks/hermesc/%OS-BIN%/hermesc\"|g" \
-              frontend/android/app/build.gradle
-            echo "Applied sed fallback patch to hermesCommand"
-          fi
-
-      - name: Create local.properties
+      - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > frontend/android/local.properties
 
       - name: Build Debug APK
         working-directory: frontend/android
         env:
-          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=512m"
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+          GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=512m'
+        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-log
+          path: /tmp/gradle.log
 
       - name: Locate APK
         id: apk
         run: |
           APK=$(find frontend/android/app/build/outputs/apk/debug -name '*.apk' | head -1)
-          echo "path=$APK" >> $GITHUB_OUTPUT
-          echo "Found APK: $APK ($(du -h "$APK" | cut -f1))"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "Found: $APK ($(du -h "$APK" | cut -f1))"
 
-      - name: Get version from app.json
+      - name: Get app version
         id: version
         run: |
-          VERSION=$(node -e "console.log(require('./frontend/app.json').expo.version)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          VER=$(node -e "console.log(require('./frontend/app.json').expo.version)")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Rename APK
-        run: |
-          cp "${{ steps.apk.outputs.path }}" "SecureGuard-${{ steps.version.outputs.version }}.apk"
-          echo "Renamed APK to SecureGuard-${{ steps.version.outputs.version }}.apk"
+      - name: Rename APK for release
+        run: cp "${{ steps.apk.outputs.path }}" "SecureGuard-${{ steps.version.outputs.version }}.apk"
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "Secure Guard ${{ steps.version.outputs.tag }}"
+          name: 'Secure Guard ${{ steps.version.outputs.tag }}'
           body: |
             ## Secure Guard ${{ steps.version.outputs.tag }}
 
-            Built locally via GitHub Actions (EAS free plan quota exhausted until April 1 2026).
+            Built from source via GitHub Actions (local Gradle build — EAS quota exhausted until April 1 2026).
 
-            ### Installation
+            ### Install on Blu G64
             1. Download `SecureGuard-${{ steps.version.outputs.version }}.apk`
-            2. On your Blu G64, enable **Settings → Security → Install unknown apps**
-            3. Open the APK to install
-
-            Built: ${{ github.run_id }}
+            2. On your device: **Settings → Security → Install unknown apps** → enable for your file manager
+            3. Open the APK file to install
           files: SecureGuard-${{ steps.version.outputs.version }}.apk
           make_latest: true
         env:
