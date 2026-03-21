@@ -1028,4 +1028,37 @@ if os.path.exists(REANIMATED_WORKLETS_SPEC):
 else:
     print(f"[!!] Patch 16: {REANIMATED_WORKLETS_SPEC} not found")
 
+# ── Patch 17: pickFirst libworklets.so to resolve duplicate native lib from reanimated+EMC ──────
+# Both react-native-reanimated and expo-modules-core bundle libworklets.so.
+# Use packagingOptions.jniLibs.pickFirsts to pick one copy.
+APP_BUILD_GRADLE = os.path.join("frontend", "android", "app", "build.gradle")
+if os.path.exists(APP_BUILD_GRADLE):
+    with open(APP_BUILD_GRADLE, "r") as f:
+        abg = f.read()
+    if "libworklets.so" not in abg:
+        OLD_JNILIBS = (
+            "        jniLibs {\n"
+            "            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'\n"
+            "            useLegacyPackaging enableLegacyPackaging.toBoolean()\n"
+            "        }"
+        )
+        NEW_JNILIBS = (
+            "        jniLibs {\n"
+            "            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'\n"
+            "            useLegacyPackaging enableLegacyPackaging.toBoolean()\n"
+            "            pickFirsts += ['lib/**/libworklets.so']\n"
+            "        }"
+        )
+        if OLD_JNILIBS in abg:
+            abg = abg.replace(OLD_JNILIBS, NEW_JNILIBS, 1)
+            with open(APP_BUILD_GRADLE, "w") as f:
+                f.write(abg)
+            print("[OK] Patch 17: added pickFirst libworklets.so to app build.gradle packagingOptions")
+        else:
+            print("[!!] Patch 17: jniLibs block anchor not found in app/build.gradle")
+    else:
+        print("[--] Patch 17: libworklets.so pickFirst already present")
+else:
+    print(f"[!!] Patch 17: {APP_BUILD_GRADLE} not found")
+
 print("\nAll android build patches applied.")
