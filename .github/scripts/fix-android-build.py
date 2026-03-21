@@ -832,6 +832,16 @@ if os.path.exists(REANIMATED_BUILD_GRADLE):
         rg = f.read()
     EXCL_MARKER = "// [patch13] exclude worklets duplicates"
     if EXCL_MARKER not in rg:
+        # Step 1: Add compileOnly project(':react-native-worklets') so reanimated can compile
+        #         against the shared worklets classes without bundling them.
+        OLD_DEPS = "dependencies {\n    implementation \"com.facebook.yoga:proguard-annotations:1.19.0\""
+        NEW_DEPS = (
+            "dependencies {\n"
+            "    // [patch13] exclude worklets duplicates\n"
+            "    compileOnly project(':react-native-worklets')\n"
+            "    implementation \"com.facebook.yoga:proguard-annotations:1.19.0\""
+        )
+        # Step 2: Exclude the 4 shared worklets files from reanimated's sourceSets
         OLD_SRCSET = "    sourceSets.main {\n        java {"
         NEW_SRCSET = (
             "    sourceSets.main {\n"
@@ -842,13 +852,21 @@ if os.path.exists(REANIMATED_BUILD_GRADLE):
             "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThread.java'\n"
             "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThreadBase.java'"
         )
+        changed = False
+        if OLD_DEPS in rg:
+            rg = rg.replace(OLD_DEPS, NEW_DEPS, 1)
+            changed = True
+        else:
+            print("[!!] Patch 13: dependencies block anchor not found in reanimated build.gradle")
         if OLD_SRCSET in rg:
             rg = rg.replace(OLD_SRCSET, NEW_SRCSET, 1)
-            with open(REANIMATED_BUILD_GRADLE, "w") as f:
-                f.write(rg)
-            print("[OK] Patch 13: excluded duplicate worklets Java sources from react-native-reanimated")
+            changed = True
         else:
             print("[!!] Patch 13: sourceSets.main anchor not found in reanimated build.gradle")
+        if changed:
+            with open(REANIMATED_BUILD_GRADLE, "w") as f:
+                f.write(rg)
+            print("[OK] Patch 13: added compileOnly worklets dep + excluded duplicate sources from react-native-reanimated")
     else:
         print("[--] Patch 13: already applied")
 else:
