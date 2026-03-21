@@ -735,20 +735,20 @@ if os.path.exists(WORKLET_RT_H):
             "#include <memory>",
             "#include <memory>\n#include <map>\n#include <mutex>"
         )
-        # 2) Add static registry fields and getWeakRuntimeFromJSIRuntime before private section
-        OLD_PRIVATE = "  const std::shared_ptr<std::recursive_mutex> runtimeMutex_;"
+        # 2) Add static PUBLIC methods BEFORE the private: section
+        OLD_PRIVATE = " private:"
         NEW_PRIVATE = (
             "  static std::weak_ptr<WorkletRuntime> getWeakRuntimeFromJSIRuntime(jsi::Runtime &rt);\n"
             "  static void registerInRuntimeRegistry(jsi::Runtime &rt, std::weak_ptr<WorkletRuntime> wr);\n"
             "  static void unregisterFromRuntimeRegistry(jsi::Runtime &rt);\n"
             "\n"
+            " private:\n"
             "  static std::map<jsi::Runtime *, std::weak_ptr<WorkletRuntime>> sRuntimeRegistry_;\n"
             "  static std::mutex sRegistryMutex_;\n"
             "\n"
-            "  const std::shared_ptr<std::recursive_mutex> runtimeMutex_;"
         )
         if OLD_PRIVATE in h:
-            h = h.replace(OLD_PRIVATE, NEW_PRIVATE)
+            h = h.replace(OLD_PRIVATE, NEW_PRIVATE, 1)
             with open(WORKLET_RT_H, "w") as f:
                 f.write(h)
             print("[OK] WorkletRuntime.h: added getWeakRuntimeFromJSIRuntime declaration + registry fields")
