@@ -850,7 +850,8 @@ if os.path.exists(REANIMATED_BUILD_GRADLE):
             "            exclude 'com/swmansion/worklets/AndroidUIScheduler.java'\n"
             "            exclude 'com/swmansion/worklets/JSCallInvokerResolver.java'\n"
             "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThread.java'\n"
-            "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThreadBase.java'"
+            "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThreadBase.java'\n"
+            "            exclude 'com/swmansion/worklets/WorkletsModule.java'"
         )
         changed = False
         if OLD_DEPS in rg:
