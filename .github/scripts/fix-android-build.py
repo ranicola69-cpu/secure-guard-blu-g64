@@ -91,4 +91,43 @@ with open(LOCAL_PROPS, "w") as f:
     f.write(f"sdk.dir={android_home}\n")
 print(f"[OK] Wrote {LOCAL_PROPS} with sdk.dir={android_home}")
 
+
+# ─── 4. Fix ReactStylesDiffMapBackingFieldAccessor.java (RN 0.79 compat) ─────
+# RN 0.79 removed internal_backingMap(); the package-private field mBackingMap
+# is still accessible from the same package.
+
+ACCESSOR_FILE = (
+    "frontend/node_modules/expo-modules-core/android/src/main/java"
+    "/com/facebook/react/uimanager/ReactStylesDiffMapBackingFieldAccessor.java"
+)
+
+FIXED_ACCESSOR = """\
+package com.facebook.react.uimanager;
+
+import com.facebook.react.bridge.ReadableMap;
+
+/**
+ * Access the package private field declared inside of [ReactStylesDiffMap].
+ * Patched for RN 0.79+ which removed the internal_backingMap() accessor.
+ */
+public class ReactStylesDiffMapBackingFieldAccessor {
+  static ReadableMap getBackingMap(ReactStylesDiffMap diffMap) {
+    return diffMap.mBackingMap;
+  }
+}
+"""
+
+if os.path.exists(ACCESSOR_FILE):
+    with open(ACCESSOR_FILE, "r") as f:
+        current = f.read()
+    if "internal_backingMap" in current:
+        with open(ACCESSOR_FILE, "w") as f:
+            f.write(FIXED_ACCESSOR)
+        print(f"[OK] Patched ReactStylesDiffMapBackingFieldAccessor.java for RN 0.79")
+    else:
+        print(f"[--] ReactStylesDiffMapBackingFieldAccessor.java already patched")
+else:
+    print(f"[!!] {ACCESSOR_FILE} not found — skipping")
+
+
 print("\nAll android build patches applied.")
