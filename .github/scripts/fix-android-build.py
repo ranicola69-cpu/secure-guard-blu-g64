@@ -341,6 +341,7 @@ import com.facebook.react.devsupport.interfaces.StackFrame
 import com.facebook.react.packagerconnection.RequestHandler
 import com.facebook.react.devsupport.StackTraceHelper.convertJavaStackTrace
 import com.facebook.react.devsupport.StackTraceHelper.convertJsStackTrace
+import com.facebook.react.devsupport.interfaces.DevSplitBundleCallback
 
 class ExpoLogBoxDevSupportManager(
   applicationContext: Context,
@@ -437,6 +438,10 @@ open class ExpoBridgelessDevSupportManager(
   ) {
 
   override fun getUniqueTag(): String = "Bridgeless"
+
+  override fun loadSplitBundleFromServer(bundlePath: String, callback: DevSplitBundleCallback) {
+    callback.onError(bundlePath, RuntimeException("Split bundle loading not supported in ExpoLogBox dev manager"))
+  }
 
   override fun handleReloadJS() {
     UiThreadUtil.assertOnUiThread()
