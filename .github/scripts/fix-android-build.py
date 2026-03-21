@@ -820,5 +820,39 @@ if os.path.exists(WORKLET_RT_CPP):
 else:
     print(f"[!!] {WORKLET_RT_CPP} not found")
 
+# ── Patch 13: Exclude duplicate worklets Java sources from react-native-reanimated ──────────────
+# Both react-native-reanimated and react-native-worklets compile the same
+# AndroidUIScheduler / JSCallInvokerResolver / WorkletsMessageQueueThread* classes.
+# Since react-native-worklets provides them standalone, exclude them from reanimated's sourceSets.
+REANIMATED_BUILD_GRADLE = os.path.join(
+    "frontend", "node_modules", "react-native-reanimated", "android", "build.gradle"
+)
+if os.path.exists(REANIMATED_BUILD_GRADLE):
+    with open(REANIMATED_BUILD_GRADLE, "r") as f:
+        rg = f.read()
+    EXCL_MARKER = "// [patch13] exclude worklets duplicates"
+    if EXCL_MARKER not in rg:
+        OLD_SRCSET = "    sourceSets.main {\n        java {"
+        NEW_SRCSET = (
+            "    sourceSets.main {\n"
+            "        java {\n"
+            "            // [patch13] exclude worklets duplicates\n"
+            "            exclude 'com/swmansion/worklets/AndroidUIScheduler.java'\n"
+            "            exclude 'com/swmansion/worklets/JSCallInvokerResolver.java'\n"
+            "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThread.java'\n"
+            "            exclude 'com/swmansion/worklets/WorkletsMessageQueueThreadBase.java'"
+        )
+        if OLD_SRCSET in rg:
+            rg = rg.replace(OLD_SRCSET, NEW_SRCSET, 1)
+            with open(REANIMATED_BUILD_GRADLE, "w") as f:
+                f.write(rg)
+            print("[OK] Patch 13: excluded duplicate worklets Java sources from react-native-reanimated")
+        else:
+            print("[!!] Patch 13: sourceSets.main anchor not found in reanimated build.gradle")
+    else:
+        print("[--] Patch 13: already applied")
+else:
+    print(f"[!!] Patch 13: {REANIMATED_BUILD_GRADLE} not found")
+
 
 print("\nAll android build patches applied.")
