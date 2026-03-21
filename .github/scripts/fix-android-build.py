@@ -303,4 +303,161 @@ else:
     print(f"[!!] {CONSTANTS_MODULE} not found — skipping")
 
 
+
+# ─── 7. Fix @expo/log-box ExpoLogBoxDevSupportManager.kt (RN 0.79 API) ──────
+# RN 0.79 changes:
+#  - getUniqueTag() is abstract Java method; 'override val uniqueTag' no longer works
+#  - showNewJavaError now takes Throwable? (nullable)
+#  - lastErrorTitle/lastErrorStack are now 'val' interface properties (can't assign)
+
+LOG_BOX_MGR = (
+    "frontend/node_modules/@expo/log-box/android/src/main/expo/modules/logbox"
+    "/ExpoLogBoxDevSupportManager.kt"
+)
+
+FIXED_LOG_BOX_MGR = r"""/*
+ * Copyright © 2024 650 Industries.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+package expo.modules.logbox
+
+import android.content.Context
+import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.common.SurfaceDelegate
+import com.facebook.react.common.SurfaceDelegateFactory
+import com.facebook.react.devsupport.DevSupportManagerBase
+import com.facebook.react.devsupport.ReactInstanceDevHelper
+import com.facebook.react.devsupport.interfaces.DevBundleDownloadListener
+import com.facebook.react.devsupport.interfaces.DevLoadingViewManager
+import com.facebook.react.devsupport.interfaces.DevSupportManager
+import com.facebook.react.devsupport.interfaces.PausedInDebuggerOverlayManager
+import com.facebook.react.devsupport.interfaces.RedBoxHandler
+import com.facebook.react.devsupport.interfaces.StackFrame
+import com.facebook.react.packagerconnection.RequestHandler
+import com.facebook.react.devsupport.StackTraceHelper.convertJavaStackTrace
+import com.facebook.react.devsupport.StackTraceHelper.convertJsStackTrace
+
+class ExpoLogBoxDevSupportManager(
+  applicationContext: Context,
+  reactInstanceManagerHelper: ReactInstanceDevHelper,
+  packagerPathForJSBundleName: String?,
+  enableOnCreate: Boolean,
+  redBoxHandler: RedBoxHandler?,
+  devBundleDownloadListener: DevBundleDownloadListener?,
+  minNumShakes: Int,
+  customPackagerCommandHandlers: Map<String, RequestHandler>?,
+  surfaceDelegateFactory: SurfaceDelegateFactory?,
+  devLoadingViewManager: DevLoadingViewManager?,
+  pausedInDebuggerOverlayManager: PausedInDebuggerOverlayManager?
+) :
+  ExpoBridgelessDevSupportManager(
+    applicationContext,
+    reactInstanceManagerHelper,
+    packagerPathForJSBundleName,
+    enableOnCreate,
+    redBoxHandler,
+    devBundleDownloadListener,
+    minNumShakes,
+    customPackagerCommandHandlers,
+    surfaceDelegateFactory,
+    devLoadingViewManager,
+    pausedInDebuggerOverlayManager
+  ) {
+
+  private var redBoxSurfaceDelegate: SurfaceDelegate? = null
+  private var _lastErrorTitle: String? = null
+  private var _lastErrorStack: Array<StackFrame>? = null
+
+  override val lastErrorTitle: String? get() = _lastErrorTitle
+  override val lastErrorStack: Array<StackFrame>? get() = _lastErrorStack
+
+  override fun hideRedboxDialog() {
+    redBoxSurfaceDelegate?.hide()
+  }
+
+  override fun showNewJavaError(message: String?, e: Throwable?) {
+    showNewError(message, if (e != null) convertJavaStackTrace(e) else emptyArray())
+  }
+
+  override fun showNewJSError(message: String?, details: ReadableArray?, errorCookie: Int) {
+    showNewError(message, convertJsStackTrace(details))
+  }
+
+  private fun showNewError(message: String?, stack: Array<StackFrame>) {
+    UiThreadUtil.runOnUiThread {
+      _lastErrorTitle = message
+      _lastErrorStack = stack
+
+      if (redBoxSurfaceDelegate == null) {
+        this.redBoxSurfaceDelegate =
+          createSurfaceDelegate("RedBox")
+            ?: ExpoLogBoxSurfaceDelegate(this@ExpoLogBoxDevSupportManager).apply {
+              createContentView("RedBox")
+            }
+      }
+
+      if (redBoxSurfaceDelegate?.isShowing() == true) {
+        return@runOnUiThread
+      }
+      redBoxSurfaceDelegate?.show()
+    }
+  }
+}
+
+open class ExpoBridgelessDevSupportManager(
+  applicationContext: Context,
+  reactInstanceManagerHelper: ReactInstanceDevHelper,
+  packagerPathForJSBundleName: String?,
+  enableOnCreate: Boolean,
+  redBoxHandler: RedBoxHandler?,
+  devBundleDownloadListener: DevBundleDownloadListener?,
+  minNumShakes: Int,
+  customPackagerCommandHandlers: Map<String, RequestHandler>?,
+  surfaceDelegateFactory: SurfaceDelegateFactory?,
+  devLoadingViewManager: DevLoadingViewManager?,
+  pausedInDebuggerOverlayManager: PausedInDebuggerOverlayManager?
+) :
+  DevSupportManagerBase(
+    applicationContext,
+    reactInstanceManagerHelper,
+    packagerPathForJSBundleName,
+    enableOnCreate,
+    redBoxHandler,
+    devBundleDownloadListener,
+    minNumShakes,
+    customPackagerCommandHandlers,
+    surfaceDelegateFactory,
+    devLoadingViewManager,
+    pausedInDebuggerOverlayManager
+  ) {
+
+  override fun getUniqueTag(): String = "Bridgeless"
+
+  override fun handleReloadJS() {
+    UiThreadUtil.assertOnUiThread()
+    hideRedboxDialog()
+    reactInstanceDevHelper.reload("BridgelessDevSupportManager.handleReloadJS()")
+  }
+}
+"""
+
+if os.path.exists(LOG_BOX_MGR):
+    with open(LOG_BOX_MGR, "r") as f:
+        lb_content = f.read()
+    if "override val uniqueTag" in lb_content or "'val' cannot be reassigned" in lb_content \
+            or "lastErrorTitle = " in lb_content:
+        with open(LOG_BOX_MGR, "w") as f:
+            f.write(FIXED_LOG_BOX_MGR)
+        print(f"[OK] Patched ExpoLogBoxDevSupportManager.kt for RN 0.79 API")
+    else:
+        print(f"[--] ExpoLogBoxDevSupportManager.kt already patched")
+else:
+    print(f"[!!] {LOG_BOX_MGR} not found — skipping")
+
+
 print("\nAll android build patches applied.")
