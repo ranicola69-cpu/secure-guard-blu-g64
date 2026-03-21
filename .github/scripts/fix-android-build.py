@@ -621,4 +621,91 @@ else:
     print(f"[!!] {MAIN_APP} not found — skipping")
 
 
+
+# ─── 11. Fix react-native-worklets WorkletRuntime to expose executeSync(lambda) ─
+# expo-modules-core WorkletJSCallInvoker calls executeSync(std::function<>) but
+# react-native-worklets v0.5.1 guards this overload behind WORKLETS_BUNDLE_MODE.
+# Removing the ifdef guard makes the overloads always available (both in the
+# header declaration and the .cpp implementation).
+
+WORKLET_RUNTIME_H = (
+    "frontend/node_modules/react-native-worklets/Common/cpp/worklets"
+    "/WorkletRuntime/WorkletRuntime.h"
+)
+WORKLET_RUNTIME_CPP = (
+    "frontend/node_modules/react-native-worklets/Common/cpp/worklets"
+    "/WorkletRuntime/WorkletRuntime.cpp"
+)
+
+if os.path.exists(WORKLET_RUNTIME_H):
+    with open(WORKLET_RUNTIME_H, "r") as f:
+        h_content = f.read()
+
+    OLD_H = """#ifdef WORKLETS_BUNDLE_MODE
+  jsi::Value executeSync(std::function<jsi::Value(jsi::Runtime &)> &&job) const;
+
+  jsi::Value executeSync(
+      const std::function<jsi::Value(jsi::Runtime &)> &job) const;
+#endif // WORKLETS_BUNDLE_MODE"""
+
+    NEW_H = """  jsi::Value executeSync(std::function<jsi::Value(jsi::Runtime &)> &&job) const;
+
+  jsi::Value executeSync(
+      const std::function<jsi::Value(jsi::Runtime &)> &job) const;"""
+
+    if OLD_H in h_content:
+        h_content = h_content.replace(OLD_H, NEW_H)
+        with open(WORKLET_RUNTIME_H, "w") as f:
+            f.write(h_content)
+        print("[OK] Patched WorkletRuntime.h: removed WORKLETS_BUNDLE_MODE guard from executeSync declarations")
+    else:
+        print("[--] WorkletRuntime.h already patched or format differs")
+else:
+    print(f"[!!] {WORKLET_RUNTIME_H} not found")
+
+if os.path.exists(WORKLET_RUNTIME_CPP):
+    with open(WORKLET_RUNTIME_CPP, "r") as f:
+        cpp_content = f.read()
+
+    OLD_CPP = """#ifdef WORKLETS_BUNDLE_MODE
+jsi::Value WorkletRuntime::executeSync(
+    std::function<jsi::Value(jsi::Runtime &)> &&job) const {
+  auto lock = std::unique_lock<std::recursive_mutex>(*runtimeMutex_);
+  jsi::Runtime &uiRuntime = getJSIRuntime();
+  return job(uiRuntime);
+}
+
+jsi::Value WorkletRuntime::executeSync(
+    const std::function<jsi::Value(jsi::Runtime &)> &job) const {
+  auto lock = std::unique_lock<std::recursive_mutex>(*runtimeMutex_);
+  jsi::Runtime &uiRuntime = getJSIRuntime();
+  return job(uiRuntime);
+}
+#endif // WORKLETS_BUNDLE_MODE"""
+
+    NEW_CPP = """jsi::Value WorkletRuntime::executeSync(
+    std::function<jsi::Value(jsi::Runtime &)> &&job) const {
+  auto lock = std::unique_lock<std::recursive_mutex>(*runtimeMutex_);
+  jsi::Runtime &uiRuntime = getJSIRuntime();
+  return job(uiRuntime);
+}
+
+jsi::Value WorkletRuntime::executeSync(
+    const std::function<jsi::Value(jsi::Runtime &)> &job) const {
+  auto lock = std::unique_lock<std::recursive_mutex>(*runtimeMutex_);
+  jsi::Runtime &uiRuntime = getJSIRuntime();
+  return job(uiRuntime);
+}"""
+
+    if OLD_CPP in cpp_content:
+        cpp_content = cpp_content.replace(OLD_CPP, NEW_CPP)
+        with open(WORKLET_RUNTIME_CPP, "w") as f:
+            f.write(cpp_content)
+        print("[OK] Patched WorkletRuntime.cpp: removed WORKLETS_BUNDLE_MODE guard from executeSync implementations")
+    else:
+        print("[--] WorkletRuntime.cpp already patched or format differs")
+else:
+    print(f"[!!] {WORKLET_RUNTIME_CPP} not found")
+
+
 print("\nAll android build patches applied.")
