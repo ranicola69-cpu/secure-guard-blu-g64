@@ -1,103 +1,180 @@
-name: Build & Release Android APK
+name: Build & Release APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - "frontend/**"
+      - 'frontend/**'
+      - '.github/workflows/build-apk.yml'
 
-permissions:
-  contents: write
-  
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: yarn
-          cache-dependency-path: frontend/yarn.lock
+          node-version: '20'
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install Yarn
+        run: npm install -g yarn@1
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: yarn install
+        run: yarn install --ignore-engines --frozen-lockfile
 
-      - name: Verify icon files
+      - name: Apply Gradle compatibility patches
         working-directory: frontend
         run: |
-          echo "📸 Checking icon files..."
-          ls -lh assets/images/icon.png assets/images/adaptive-icon.png
-          echo "✅ Icons present"
+          python3 << 'PYEOF'
+          import os
 
-      - name: Build APK (EAS Cloud)
-        id: build
-        working-directory: frontend
+          SHIM = '''
+// Compatibility shim: provides .extra extension property on ExtensionAware types
+private val org.gradle.api.plugins.ExtensionAware.extra: org.gradle.api.plugins.ExtraPropertiesExtension
+    get() = extensions.extraProperties
+
+'''
+
+          FILES_TO_PATCH = [
+            "node_modules/expo-modules-core/expo-module-gradle-plugin/src/main/kotlin/expo/modules/plugin/ExpoModulesGradlePlugin.kt",
+            "node_modules/expo-modules-core/expo-module-gradle-plugin/src/main/kotlin/expo/modules/plugin/ProjectConfiguration.kt",
+            "node_modules/expo-modules-autolinking/android/expo-gradle-plugin/expo-autolinking-plugin/src/main/kotlin/expo/modules/plugin/ExpoRootProjectPlugin.kt",
+          ]
+
+          for filepath in FILES_TO_PATCH:
+            if not os.path.exists(filepath):
+              print(f"SKIP (not found): {filepath}")
+              continue
+            with open(filepath, 'r') as f:
+              content = f.read()
+            if 'Compatibility shim' in content:
+              print(f"Already patched: {filepath}")
+              continue
+            lines = content.split('\n')
+            last_import_idx = -1
+            for i, line in enumerate(lines):
+              if line.startswith('import '):
+                last_import_idx = i
+            if last_import_idx >= 0:
+              lines.insert(last_import_idx + 1, SHIM)
+              with open(filepath, 'w') as f:
+                f.write('\n'.join(lines))
+              print(f"Patched: {filepath}")
+            else:
+              print(f"No import found (skipped): {filepath}")
+          PYEOF
+
+      - name: Install Android NDK 27
         run: |
-          echo "🧹 Clearing EAS cache..."
-          eas build:cancel -p android --non-interactive || true
-          echo "🚀 Building with fresh cache..."
-          eas build -p android --profile preview --non-interactive --clear-cache --wait 2>&1 | tee /tmp/eas-output.txt
-          APK_URL=$(grep -oP "https://expo.dev/artifacts/eas/[^ ]+" /tmp/eas-output.txt | tail -1 || grep -oP "https://[^ ]+\.apk" /tmp/eas-output.txt | tail -1)
-          echo "apk_url=$APK_URL" >> $GITHUB_OUTPUT
-          echo "Build URL: $APK_URL"
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006" 2>&1 | tail -3
+
+      - name: Run Expo Prebuild
+        working-directory: frontend
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: 1
+        run: npx expo prebuild --platform android --no-install
 
-      - name: Download APK
+      - name: Patch app/build.gradle (fix hermes-compiler path)
         run: |
-          APK_URL="${{ steps.build.outputs.apk_url }}"
-          if [ -n "$APK_URL" ]; then
-            curl -L "$APK_URL" -o /tmp/secure-guard-v${{ steps.version.outputs.version }}.apk
-          else
-            # Fallback: get latest build artifact via EAS API
-            ARTIFACT=$(curl -s -X POST "https://api.expo.dev/graphql" \
-              -H "Authorization: Bearer ${{ secrets.EXPO_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -d '{"query":"{ app { byId(appId: \"96ef22e1-4227-40ef-babf-53267082794a\") { builds(limit:1,offset:0,filter:{platform:ANDROID,status:FINISHED}) { id artifacts { applicationArchiveUrl } } } } }"}' \
-              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['app']['byId']['builds'][0]['artifacts']['applicationArchiveUrl'])")
-            curl -L "$ARTIFACT" -o /tmp/secure-guard.apk
+          python3 << 'PYEOF'
+          filepath = "frontend/android/app/build.gradle"
+          with open(filepath, 'r') as f:
+            content = f.read()
+
+          old = (
+            "hermesCommand = new File([\"node\", \"--print\", "
+            "\"require.resolve('hermes-compiler/package.json', "
+            "{ paths: [require.resolve('react-native/package.json')] })\"]"
+            ".execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() "
+            "+ \"/hermesc/%OS-BIN%/hermesc\""
+          )
+          new = (
+            "hermesCommand = new File([\"node\", \"--print\", "
+            "\"require.resolve('react-native/package.json')\"]"
+            ".execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() "
+            "+ \"/sdks/hermesc/%OS-BIN%/hermesc\""
+          )
+
+          if old in content:
+            content = content.replace(old, new)
+            with open(filepath, 'w') as f:
+              f.write(content)
+            print("Patched hermesCommand in app/build.gradle")
+          elif 'hermes-compiler' not in content:
+            print("hermesCommand already uses react-native/sdks path — no patch needed")
+          else:
+            print("WARNING: Could not find exact old string, trying fallback sed...")
+          PYEOF
+
+          # Fallback sed patch if python didn't match
+          if grep -q "hermes-compiler" frontend/android/app/build.gradle; then
+            sed -i \
+              "s|require.resolve('hermes-compiler/package.json', { paths: \[require.resolve('react-native/package.json')\] })|require.resolve('react-native/package.json')|g" \
+              frontend/android/app/build.gradle
+            sed -i \
+              "s|).getParentFile().getAbsolutePath() + \"/hermesc/%OS-BIN%/hermesc\"|).getParentFile().getAbsolutePath() + \"/sdks/hermesc/%OS-BIN%/hermesc\"|g" \
+              frontend/android/app/build.gradle
+            echo "Applied sed fallback patch to hermesCommand"
           fi
 
-      - name: Get app version
-        id: version
-        run: echo "version=$(node -p "require('./frontend/app.json').expo.version")" >> $GITHUB_OUTPUT
+      - name: Create local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > frontend/android/local.properties
 
-      - name: Create GitHub Release
+      - name: Build Debug APK
+        working-directory: frontend/android
+        env:
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=512m"
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK=$(find frontend/android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "path=$APK" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK ($(du -h "$APK" | cut -f1))"
+
+      - name: Get version from app.json
+        id: version
+        run: |
+          VERSION=$(node -e "console.log(require('./frontend/app.json').expo.version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Rename APK
+        run: |
+          cp "${{ steps.apk.outputs.path }}" "SecureGuard-${{ steps.version.outputs.version }}.apk"
+          echo "Renamed APK to SecureGuard-${{ steps.version.outputs.version }}.apk"
+
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: "Secure Guard v${{ steps.version.outputs.version }} - SDK 55"
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Secure Guard ${{ steps.version.outputs.tag }}"
           body: |
-            ## Secure Guard v${{ steps.version.outputs.version }}
-            
-            ### Whats New
-            - Upgraded to Expo SDK 55 (fixes boot crash on Blu G64)
-            - Updated React Native to 0.79.2
-            - All dependencies updated for SDK 55
-            
-            ### Features
-            - Enterprise spyware detection (TracFone, Facebook, Managed Provisioning)
-            - Cache cleaner via Shizuku
-            - Free worldwide VPN (8 servers)
-            - DNS manager with DoH support
-            - Military-grade security for Blu G64
-            
-            ### Install
-            Download `secure-guard.apk` below and sideload on your Blu G64.
-          files: /tmp/secure-guard*.apk
-          draft: false
-          prerelease: false
-          make_latest: true
+            ## Secure Guard ${{ steps.version.outputs.tag }}
 
+            Built locally via GitHub Actions (EAS free plan quota exhausted until April 1 2026).
+
+            ### Installation
+            1. Download `SecureGuard-${{ steps.version.outputs.version }}.apk`
+            2. On your Blu G64, enable **Settings → Security → Install unknown apps**
+            3. Open the APK to install
+
+            Built: ${{ github.run_id }}
+          files: SecureGuard-${{ steps.version.outputs.version }}.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
