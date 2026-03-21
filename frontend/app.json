@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure Guard",
     "slug": "secure-guard-blu-g64",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secureguard",
@@ -17,7 +17,7 @@
         "backgroundColor": "#0a0a0a"
       },
       "package": "com.dphms.secureguard",
-      "versionCode": 9
+      "versionCode": 10
     },
     "web": {
       "bundler": "metro",
