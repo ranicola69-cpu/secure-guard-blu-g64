@@ -256,4 +256,51 @@ else:
     print(f"[!!] {CONSTANTS_SERVICE} not found — skipping")
 
 
+
+# ─── 6. Fix expo-constants/ConstantsModule.kt (AppContext.constants missing) ─
+# AppContext does not have a .constants property in this version of
+# expo-modules-core. Use legacyModule<ConstantsInterface>() instead.
+
+CONSTANTS_MODULE = (
+    "frontend/node_modules/expo-constants/android/src/main/java"
+    "/expo/modules/constants/ConstantsModule.kt"
+)
+
+FIXED_CONSTANTS_MODULE = """\
+// Copyright 2015-present 650 Industries. All rights reserved.
+package expo.modules.constants
+
+import expo.modules.interfaces.constants.ConstantsInterface
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
+
+class ConstantsModule : Module() {
+
+  override fun definition() = ModuleDefinition {
+    Name("ExponentConstants")
+
+    Constants {
+      return@Constants appContext.legacyModule<ConstantsInterface>()?.constants ?: emptyMap()
+    }
+
+    AsyncFunction<String?>("getWebViewUserAgentAsync") {
+      return@AsyncFunction System.getProperty("http.agent")
+    }
+  }
+}
+"""
+
+if os.path.exists(CONSTANTS_MODULE):
+    with open(CONSTANTS_MODULE, "r") as f:
+        cm_content = f.read()
+    if "appContext.constants?.constants" in cm_content:
+        with open(CONSTANTS_MODULE, "w") as f:
+            f.write(FIXED_CONSTANTS_MODULE)
+        print(f"[OK] Patched ConstantsModule.kt to use legacyModule<ConstantsInterface>()")
+    else:
+        print(f"[--] ConstantsModule.kt already patched")
+else:
+    print(f"[!!] {CONSTANTS_MODULE} not found — skipping")
+
+
 print("\nAll android build patches applied.")
