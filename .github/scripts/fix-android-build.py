@@ -465,4 +465,36 @@ else:
     print(f"[!!] {LOG_BOX_MGR} not found — skipping")
 
 
+
+# ─── 8. Create missing CurrentActivityNotFoundException (removed from expo-core) ─
+# expo-modules-core no longer ships CurrentActivityNotFoundException in
+# expo.modules.core.errors. expo-web-browser and others still import it.
+# Re-create the class to fix the missing reference.
+
+CURRENT_ACTIVITY_EX = (
+    "frontend/node_modules/expo-modules-core/android/src/main/java"
+    "/expo/modules/core/errors/CurrentActivityNotFoundException.kt"
+)
+
+CURRENT_ACTIVITY_EX_CONTENT = """\
+package expo.modules.core.errors
+
+/**
+ * Thrown when an operation requires a current Activity but none is available.
+ * Re-created for RN 0.79 compat — this class was removed from expo-modules-core
+ * but is still referenced by expo-web-browser and other packages.
+ */
+class CurrentActivityNotFoundException :
+  Exception("Current activity is not available")
+"""
+
+if not os.path.exists(CURRENT_ACTIVITY_EX):
+    os.makedirs(os.path.dirname(CURRENT_ACTIVITY_EX), exist_ok=True)
+    with open(CURRENT_ACTIVITY_EX, "w") as f:
+        f.write(CURRENT_ACTIVITY_EX_CONTENT)
+    print(f"[OK] Created CurrentActivityNotFoundException.kt")
+else:
+    print(f"[--] CurrentActivityNotFoundException.kt already exists")
+
+
 print("\nAll android build patches applied.")
