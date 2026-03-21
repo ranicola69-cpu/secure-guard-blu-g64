@@ -874,4 +874,37 @@ else:
     print(f"[!!] Patch 13: {REANIMATED_BUILD_GRADLE} not found")
 
 
+# ── Patch 14: Add getAndroidUIScheduler() to worklets legacyBundling WorkletsModule ─────────────
+# react-native-reanimated's NodesManager calls mWorkletsModule.getAndroidUIScheduler(), but the
+# legacyBundling/WorkletsModule.java in react-native-worklets doesn't have this getter.
+# Since patch 13 excludes reanimated's WorkletsModule.java (duplicate), worklets' version must
+# provide all APIs that reanimated expects.
+WORKLETS_MODULE_LEGACY = os.path.join(
+    "frontend", "node_modules", "react-native-worklets",
+    "android", "src", "legacyBundling", "com", "swmansion", "worklets", "WorkletsModule.java"
+)
+if os.path.exists(WORKLETS_MODULE_LEGACY):
+    with open(WORKLETS_MODULE_LEGACY, "r") as f:
+        wm = f.read()
+    if "getAndroidUIScheduler" not in wm:
+        OLD_INVALIDATE = "  public void invalidate() {"
+        NEW_INVALIDATE = (
+            "  public AndroidUIScheduler getAndroidUIScheduler() {\n"
+            "    return mAndroidUIScheduler;\n"
+            "  }\n"
+            "\n"
+            "  public void invalidate() {"
+        )
+        if OLD_INVALIDATE in wm:
+            wm = wm.replace(OLD_INVALIDATE, NEW_INVALIDATE, 1)
+            with open(WORKLETS_MODULE_LEGACY, "w") as f:
+                f.write(wm)
+            print("[OK] Patch 14: added getAndroidUIScheduler() to worklets legacyBundling WorkletsModule")
+        else:
+            print("[!!] Patch 14: invalidate() anchor not found in legacyBundling WorkletsModule.java")
+    else:
+        print("[--] Patch 14: getAndroidUIScheduler() already present")
+else:
+    print(f"[!!] Patch 14: {WORKLETS_MODULE_LEGACY} not found")
+
 print("\nAll android build patches applied.")
