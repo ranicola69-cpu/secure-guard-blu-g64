@@ -4,7 +4,7 @@
 
 ### *DPHMS Mobile Security Suite — BLU G64*
 
-[![Download APK](https://img.shields.io/badge/Download%20APK-v2.0.0-black?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/download/v2.0.0/SecureGuard-2.0.0.apk)
+[![Download APK](https://img.shields.io/badge/Download%20APK-v0.1.0--beta-black?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/download/v0.1.0-beta/SecureGuard-0.1.0.apk)
 [![Android](https://img.shields.io/badge/Android-BLU%20G64-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/latest)
 [![DPHMS](https://img.shields.io/badge/DPHMS-Security-8B0000?style=for-the-badge)](https://github.com/ranicola69-cpu)
 
