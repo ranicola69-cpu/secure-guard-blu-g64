@@ -7,21 +7,20 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Vpn } from '@/modules/VpnService';
 
-import { Vpn } from '../../modules/VpnService';
+const C = {
+  bg: '#0a0a0a', card: '#111', card2: '#1a1a1a', border: '#1e1e1e',
+  green: '#00ff88', blue: '#00aaff', red: '#ff3366', orange: '#ff9500',
+  text: '#fff', dim: '#999',
+};
 
 interface VPNServer {
-  id: string;
-  country: string;
-  city: string;
-  dns: string;
-  protocol: string;
-  latency: number;
+  id: string; country: string; city: string; dns: string; protocol: string; latency: number;
 }
 
 const FREE_VPN_SERVERS: VPNServer[] = [
@@ -31,52 +30,41 @@ const FREE_VPN_SERVERS: VPNServer[] = [
   { id: '4', country: 'Canada', city: 'Toronto', dns: '208.67.220.220', protocol: 'DNS-VPN', latency: 52 },
   { id: '5', country: 'Canada', city: 'Montreal', dns: '149.112.112.112', protocol: 'DNS-VPN', latency: 48 },
   { id: '6', country: 'Brazil', city: 'São Paulo', dns: '9.9.9.9', protocol: 'DNS-VPN', latency: 85 },
-  { id: '7', country: 'Brazil', city: 'Rio de Janeiro', dns: '149.112.112.9', protocol: 'DNS-VPN', latency: 90 },
-  { id: '8', country: 'UK', city: 'London', dns: '208.67.222.222', protocol: 'DNS-VPN', latency: 65 },
-  { id: '9', country: 'Germany', city: 'Frankfurt', dns: '94.140.14.14', protocol: 'DNS-VPN', latency: 58 },
-  { id: '10', country: 'Japan', city: 'Tokyo', dns: '8.8.4.4', protocol: 'DNS-VPN', latency: 125 },
-  { id: '11', country: 'Singapore', city: 'Singapore', dns: '94.140.15.15', protocol: 'DNS-VPN', latency: 95 },
-  { id: '12', country: 'Australia', city: 'Sydney', dns: '76.76.2.0', protocol: 'DNS-VPN', latency: 180 },
+  { id: '7', country: 'UK', city: 'London', dns: '208.67.222.222', protocol: 'DNS-VPN', latency: 65 },
+  { id: '8', country: 'Germany', city: 'Frankfurt', dns: '94.140.14.14', protocol: 'DNS-VPN', latency: 58 },
+  { id: '9', country: 'Japan', city: 'Tokyo', dns: '8.8.4.4', protocol: 'DNS-VPN', latency: 125 },
+  { id: '10', country: 'Singapore', city: 'Singapore', dns: '94.140.15.15', protocol: 'DNS-VPN', latency: 95 },
+  { id: '11', country: 'Australia', city: 'Sydney', dns: '76.76.2.0', protocol: 'DNS-VPN', latency: 180 },
 ];
 
 export default function VPNScreen() {
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [connected, setConnected] = useState(false);
   const [selectedServer, setSelectedServer] = useState<VPNServer | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [currentDns, setCurrentDns] = useState('');
-  const [dataStats, setDataStats] = useState({ sent: 0, received: 0 });
 
   useEffect(() => {
     checkVpnStatus();
-    
-    // Set up VPN event listeners
     const connectedSub = Vpn.onConnected((data) => {
       setConnected(true);
       setCurrentDns(data.dnsServer);
     });
-    
     const disconnectedSub = Vpn.onDisconnected(() => {
       setConnected(false);
       setCurrentDns('');
       setSelectedServer(null);
     });
-    
-    return () => {
-      connectedSub.remove();
-      disconnectedSub.remove();
-    };
+    return () => { connectedSub.remove(); disconnectedSub.remove(); };
   }, []);
 
   const checkVpnStatus = async () => {
     const isConnected = await Vpn.isConnected();
     setConnected(isConnected);
-    
     if (isConnected) {
       const dns = await Vpn.getCurrentDns();
       setCurrentDns(dns);
-      
-      // Find matching server
       const server = FREE_VPN_SERVERS.find(s => s.dns === dns);
       if (server) setSelectedServer(server);
     }
@@ -84,45 +72,28 @@ export default function VPNScreen() {
 
   const connectToVPN = async (server: VPNServer) => {
     if (connecting || connected) return;
-
     setConnecting(true);
     setSelectedServer(server);
-
     try {
-      // First prepare VPN (request permission if needed)
       const prepared = await Vpn.prepareVpn();
-      
       if (!prepared) {
-        Alert.alert(
-          'VPN Permission Required',
-          'Please grant VPN permission to enable secure DNS protection.',
-          [{ text: 'OK' }]
-        );
         setConnecting(false);
         setSelectedServer(null);
         return;
       }
-      
-      // Connect with the server's DNS
       const result = await Vpn.connect(server.dns, '10.0.0.2');
-      
       if (result.connected) {
         setConnected(true);
         setCurrentDns(result.dnsServer);
-        Alert.alert(
-          'VPN Connected',
-          `Connected to ${server.city}, ${server.country}\nDNS: ${server.dns}\n\nAll your traffic is now protected with encrypted DNS.`
-        );
+        Alert.alert('VPN Connected', `Connected to ${server.city}, ${server.country}\nDNS: ${server.dns}\n\nAll traffic is now DNS-protected.`);
       } else {
         Alert.alert('Connection Failed', 'Failed to establish VPN connection. Please try again.');
         setSelectedServer(null);
       }
     } catch (error) {
-      console.error('VPN connection error:', error);
-      Alert.alert('Error', 'An error occurred while connecting to VPN.');
+      Alert.alert('Error', 'An error occurred while connecting.');
       setSelectedServer(null);
     }
-
     setConnecting(false);
   };
 
@@ -134,54 +105,28 @@ export default function VPNScreen() {
         setConnected(false);
         setCurrentDns('');
         setSelectedServer(null);
-        Alert.alert('VPN Disconnected', 'Your connection is no longer protected.');
       } else {
         Alert.alert('Error', 'Failed to disconnect VPN.');
       }
-    } catch (error) {
-      console.error('VPN disconnect error:', error);
+    } catch {
       Alert.alert('Error', 'An error occurred while disconnecting.');
     }
     setConnecting(false);
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await checkVpnStatus();
-    setRefreshing(false);
-  };
-
-  const getCountryIcon = (country: string): string => {
-    const icons: Record<string, string> = {
-      USA: 'flag',
-      UK: 'flag',
-      Germany: 'flag',
-      Japan: 'flag',
-      Singapore: 'flag',
-      Canada: 'flag',
-      Australia: 'flag',
-    };
-    return icons[country] || 'globe';
-  };
-
   const getLatencyColor = (latency: number) => {
-    if (latency < 50) return '#00ff88';
-    if (latency < 100) return '#ffaa00';
-    return '#ff3366';
+    if (latency < 50) return C.green;
+    if (latency < 100) return C.orange;
+    return C.red;
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>VPN Protection</Text>
-        <View style={[styles.statusBadge, connected && styles.statusBadgeConnected]}>
-          <View
-            style={[
-              styles.statusDot,
-              { backgroundColor: connected ? '#00ff88' : '#666' },
-            ]}
-          />
-          <Text style={[styles.statusText, connected && { color: '#00ff88' }]}>
+        <View style={[styles.statusBadge, connected && styles.statusBadgeOn]}>
+          <View style={[styles.statusDot, { backgroundColor: connected ? C.green : '#444' }]} />
+          <Text style={[styles.statusText, { color: connected ? C.green : '#888' }]}>
             {connected ? 'PROTECTED' : 'UNPROTECTED'}
           </Text>
         </View>
@@ -189,470 +134,177 @@ export default function VPNScreen() {
 
       <ScrollView
         style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00ff88" />
-        }
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await checkVpnStatus(); setRefreshing(false); }} tintColor={C.green} />}
       >
-        {/* Connection Card */}
         {connected && selectedServer && (
           <View style={styles.connectionCard}>
-            <View style={styles.connectionHeader}>
+            <View style={styles.connectionTop}>
               <View style={styles.connectionTitleRow}>
-                <Ionicons name="shield-checkmark" size={24} color="#00ff88" />
+                <Ionicons name="shield-checkmark" size={22} color={C.green} />
                 <Text style={styles.connectionTitle}>Active Protection</Text>
               </View>
-              <View style={styles.liveIndicator}>
+              <View style={styles.liveTag}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>LIVE</Text>
               </View>
             </View>
-            
             <View style={styles.connectionDetails}>
-              <View style={styles.connectionRow}>
-                <Text style={styles.connectionLabel}>Location:</Text>
-                <Text style={styles.connectionValue}>{selectedServer.city}, {selectedServer.country}</Text>
-              </View>
-              <View style={styles.connectionRow}>
-                <Text style={styles.connectionLabel}>DNS Server:</Text>
-                <Text style={styles.connectionValue}>{currentDns}</Text>
-              </View>
-              <View style={styles.connectionRow}>
-                <Text style={styles.connectionLabel}>Protocol:</Text>
-                <Text style={styles.connectionValue}>DNS-over-VPN (Encrypted)</Text>
-              </View>
-              <View style={styles.connectionRow}>
-                <Text style={styles.connectionLabel}>Encryption:</Text>
-                <Text style={styles.connectionValue}>AES-256-GCM</Text>
-              </View>
+              {[
+                { label: 'Location', value: `${selectedServer.city}, ${selectedServer.country}` },
+                { label: 'DNS Server', value: currentDns },
+                { label: 'Protocol', value: 'DNS-over-VPN (Encrypted)' },
+                { label: 'Encryption', value: 'AES-256-GCM' },
+              ].map(({ label, value }) => (
+                <View key={label} style={styles.connectionRow}>
+                  <Text style={styles.connectionLabel}>{label}:</Text>
+                  <Text style={styles.connectionValue}>{value}</Text>
+                </View>
+              ))}
             </View>
-            
-            <TouchableOpacity
-              style={styles.disconnectButton}
-              onPress={disconnectVPN}
-              disabled={connecting}
-            >
-              {connecting ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
+            <TouchableOpacity style={styles.disconnectBtn} onPress={disconnectVPN} disabled={connecting}>
+              {connecting ? <ActivityIndicator color="#fff" size="small" /> : (
                 <>
-                  <Ionicons name="power" size={20} color="#fff" />
-                  <Text style={styles.disconnectButtonText}>DISCONNECT</Text>
+                  <Ionicons name="power" size={18} color="#fff" />
+                  <Text style={styles.disconnectBtnText}>DISCONNECT</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Free VPN Badge */}
+        {/* Free VPN Info */}
         <View style={styles.freeBadge}>
-          <Ionicons name="gift" size={20} color="#00ff88" />
-          <View style={styles.freeBadgeContent}>
-            <Text style={styles.freeBadgeTitle}>Free DNS-VPN Protection</Text>
-            <Text style={styles.freeBadgeDesc}>No registration • Unlimited bandwidth • Military-grade encryption</Text>
+          <Ionicons name="gift" size={20} color={C.green} />
+          <View>
+            <Text style={styles.freeTitle}>100% FREE VPN Protection</Text>
+            <Text style={styles.freeDesc}>DNS-based privacy protection • No registration required • No data limits</Text>
           </View>
         </View>
 
-        {/* How It Works */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle" size={24} color="#00aaff" />
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>How DNS-VPN Works</Text>
+        {!Vpn.isNativeAvailable && (
+          <View style={styles.infoCard}>
+            <Ionicons name="information-circle" size={20} color={C.blue} />
             <Text style={styles.infoText}>
-              SecureGuard creates a local VPN tunnel that routes all your DNS queries through encrypted servers.
-              This prevents ISPs and attackers from seeing which websites you visit.
+              VPN requires a native Android build. For DNS protection now, configure Private DNS in Android settings with one of these servers.
             </Text>
           </View>
-        </View>
+        )}
 
-        {/* Servers List */}
+        {/* Server List */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Select Server ({FREE_VPN_SERVERS.length})</Text>
+          <Text style={styles.sectionTitle}>SERVER LOCATIONS ({FREE_VPN_SERVERS.length} available)</Text>
           {FREE_VPN_SERVERS.map((server) => (
             <TouchableOpacity
               key={server.id}
               style={[
                 styles.serverCard,
-                connected && selectedServer?.id === server.id && styles.serverCardActive,
+                selectedServer?.id === server.id && styles.serverCardSelected,
               ]}
-              onPress={() => !connected && connectToVPN(server)}
-              disabled={connected || connecting}
+              onPress={() => connected ? null : connectToVPN(server)}
+              disabled={connected}
             >
               <View style={styles.serverLeft}>
                 <View style={styles.serverIcon}>
-                  <Ionicons name={getCountryIcon(server.country)} size={24} color="#00ff88" />
+                  <Ionicons name="globe" size={20} color={selectedServer?.id === server.id ? C.green : C.dim} />
                 </View>
-                <View style={styles.serverInfo}>
-                  <Text style={styles.serverName}>
-                    {server.city}, {server.country}
-                  </Text>
-                  <Text style={styles.serverDns}>DNS: {server.dns}</Text>
+                <View>
+                  <Text style={styles.serverCity}>{server.city}</Text>
+                  <View style={styles.serverRow}>
+                    <Text style={styles.serverCountry}>{server.country}</Text>
+                    <Text style={styles.serverDot}>•</Text>
+                    <Text style={styles.serverDns}>{server.dns}</Text>
+                  </View>
                 </View>
               </View>
               <View style={styles.serverRight}>
-                <View
-                  style={[
-                    styles.latencyBadge,
-                    { borderColor: getLatencyColor(server.latency) },
-                  ]}
-                >
-                  <Text style={[styles.latencyText, { color: getLatencyColor(server.latency) }]}>
-                    {server.latency}ms
-                  </Text>
-                </View>
-                {connected && selectedServer?.id === server.id ? (
-                  <Ionicons name="checkmark-circle" size={24} color="#00ff88" />
-                ) : connecting && selectedServer?.id === server.id ? (
-                  <ActivityIndicator color="#00ff88" size="small" />
-                ) : (
-                  <Ionicons name="chevron-forward" size={24} color="#666" />
+                <Text style={[styles.serverLatency, { color: getLatencyColor(server.latency) }]}>
+                  {server.latency}ms
+                </Text>
+                {selectedServer?.id === server.id && connected && (
+                  <Ionicons name="checkmark-circle" size={20} color={C.green} />
+                )}
+                {selectedServer?.id === server.id && connecting && (
+                  <ActivityIndicator size="small" color={C.green} />
                 )}
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Security Features */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Security Features</Text>
-          
-          <View style={styles.featureCard}>
-            <Ionicons name="lock-closed" size={24} color="#00ff88" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>DNS Encryption</Text>
-              <Text style={styles.featureDesc}>All DNS queries are encrypted end-to-end</Text>
-            </View>
-            <View style={[styles.featureStatus, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <Ionicons name="eye-off" size={24} color="#00ff88" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>No Logs Policy</Text>
-              <Text style={styles.featureDesc}>Your browsing history is never recorded</Text>
-            </View>
-            <View style={[styles.featureStatus, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <Ionicons name="shield" size={24} color="#00ff88" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>Malware Protection</Text>
-              <Text style={styles.featureDesc}>Blocks known malicious domains</Text>
-            </View>
-            <View style={[styles.featureStatus, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <Ionicons name="flash" size={24} color="#00ff88" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>Zero Latency DNS</Text>
-              <Text style={styles.featureDesc}>Optimized for fast resolution</Text>
-            </View>
-            <View style={[styles.featureStatus, { backgroundColor: '#00ff88' }]} />
-          </View>
-        </View>
-
-        {/* Military Grade Badge */}
-        <View style={styles.militaryBadge}>
-          <Ionicons name="ribbon" size={24} color="#00ff88" />
-          <View style={styles.militaryInfo}>
-            <Text style={styles.militaryTitle}>MILITARY GRADE ENCRYPTION</Text>
-            <Text style={styles.militaryDesc}>AES-256 • RSA-4096 • Perfect Forward Secrecy</Text>
-          </View>
-        </View>
+        <View style={{ height: 80 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
+  container: { flex: 1, backgroundColor: C.bg },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
+  headerTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: C.text },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+    backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a',
   },
-  statusBadgeConnected: {
-    backgroundColor: '#00ff8820',
-    borderWidth: 1,
-    borderColor: '#00ff88',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#666',
-    letterSpacing: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
+  statusBadgeOn: { backgroundColor: '#00ff8808', borderColor: '#00ff8830' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
+  content: { flex: 1 },
   connectionCard: {
-    backgroundColor: '#1a1a1a',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#00ff88',
+    backgroundColor: '#00ff8808', margin: 16, borderRadius: 16, padding: 18,
+    borderWidth: 1, borderColor: '#00ff8830',
   },
-  connectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+  connectionTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  connectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  connectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold', color: C.green },
+  liveTag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#00ff8820', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.green },
+  liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: C.green, letterSpacing: 1 },
+  connectionDetails: { gap: 8, marginBottom: 16 },
+  connectionRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  connectionLabel: { fontSize: 12, color: '#888', fontFamily: 'Inter_400Regular' },
+  connectionValue: { fontSize: 12, color: C.text, fontFamily: 'Inter_500Medium' },
+  disconnectBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: C.red, borderRadius: 10, paddingVertical: 12,
   },
-  connectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  connectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#ff336620',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ff3366',
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ff3366',
-    letterSpacing: 1,
-  },
-  connectionDetails: {
-    gap: 8,
-    marginBottom: 16,
-  },
-  connectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  connectionLabel: {
-    fontSize: 13,
-    color: '#999',
-  },
-  connectionValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  disconnectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ff3366',
-    padding: 14,
-    borderRadius: 10,
-    gap: 8,
-  },
-  disconnectButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
+  disconnectBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
   freeBadge: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#00ff8815',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#00ff8840',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#00ff8808', marginHorizontal: 16, marginBottom: 16,
+    padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#00ff8825',
   },
-  freeBadgeContent: {
-    flex: 1,
-  },
-  freeBadgeTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#00ff88',
-  },
-  freeBadgeDesc: {
-    fontSize: 11,
-    color: '#00ff8899',
-    marginTop: 4,
-  },
+  freeTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', color: C.green, marginBottom: 3 },
+  freeDesc: { fontSize: 11, color: '#00ff8880', fontFamily: 'Inter_400Regular' },
   infoCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#00aaff15',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#00aaff40',
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#00aaff08', marginHorizontal: 16, marginBottom: 16,
+    padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#00aaff25',
   },
-  infoContent: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00aaff',
-    marginBottom: 4,
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#00aaff99',
-    lineHeight: 18,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
-  },
+  infoText: { flex: 1, fontSize: 12, color: '#aaa', fontFamily: 'Inter_400Regular', lineHeight: 18 },
+  section: { paddingHorizontal: 16 },
+  sectionTitle: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#555', letterSpacing: 1.5, marginBottom: 10 },
   serverCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: C.border,
   },
-  serverCardActive: {
-    borderColor: '#00ff88',
-  },
-  serverLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
+  serverCardSelected: { borderColor: '#00ff8840', backgroundColor: '#00ff8806' },
+  serverLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   serverIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#00ff8815',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center',
   },
-  serverInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  serverName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  serverDns: {
-    fontSize: 12,
-    color: '#999',
-  },
-  serverRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  latencyBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  latencyText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    gap: 12,
-  },
-  featureInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  featureName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  featureDesc: {
-    fontSize: 12,
-    color: '#999',
-  },
-  featureStatus: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  militaryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#00ff8815',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 32,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#00ff8840',
-  },
-  militaryInfo: {
-    flex: 1,
-  },
-  militaryTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#00ff88',
-    letterSpacing: 1,
-  },
-  militaryDesc: {
-    fontSize: 11,
-    color: '#00ff8899',
-    marginTop: 2,
-  },
+  serverCity: { fontSize: 13, fontFamily: 'Inter_600SemiBold', color: C.text, marginBottom: 2 },
+  serverRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  serverCountry: { fontSize: 11, color: C.dim, fontFamily: 'Inter_400Regular' },
+  serverDot: { fontSize: 11, color: '#444' },
+  serverDns: { fontSize: 11, color: '#666', fontFamily: 'Inter_400Regular' },
+  serverRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  serverLatency: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
 });
