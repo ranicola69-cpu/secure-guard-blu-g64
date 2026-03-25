@@ -85,8 +85,8 @@ jobs:
         id: version
         run: |
           VER=$(node -e "console.log(require('./frontend/app.json').expo.version)")
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}-beta" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VER}-beta" >> "$GITHUB_OUTPUT"
 
       - name: Rename APK for release
         run: cp "${{ steps.apk.outputs.path }}" "SecureGuard-${{ steps.version.outputs.version }}.apk"
