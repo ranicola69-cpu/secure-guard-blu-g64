@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure Guard",
     "slug": "secure-guard",
-    "version": "2.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secure-guard",
@@ -17,7 +17,7 @@
       "supportsTablet": false
     },
     "android": {
-      "versionCode": 200,
+      "versionCode": 10,
       "package": "com.dphms.secureguard"
     },
     "web": {
