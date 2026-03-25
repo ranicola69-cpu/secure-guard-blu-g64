@@ -79,7 +79,7 @@ export default function SplashScreen() {
       </Animated.View>
 
       <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
-        <Text style={styles.versionText}>v1.5.0 STABLE</Text>
+        <Text style={styles.versionText}>v0.1.0 BETA</Text>
       </Animated.View>
     </View>
   );
