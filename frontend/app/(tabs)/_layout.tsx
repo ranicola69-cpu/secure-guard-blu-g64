@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-import DonationSplash, { shouldShowDonationSplash } from '../../components/DonationSplash';
+import DonationSplash, { shouldShowDonationSplash } from '@/components/DonationSplash';
 
 export default function TabLayout() {
   const [showDonation, setShowDonation] = useState(false);
@@ -23,16 +23,19 @@ export default function TabLayout() {
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: '#00ff88',
-          tabBarInactiveTintColor: '#555',
+          tabBarInactiveTintColor: '#444',
           tabBarStyle: {
             backgroundColor: '#0a0a0a',
             borderTopColor: '#1a1a1a',
-            height: 58,
-            paddingBottom: 6,
+            borderTopWidth: 1,
+            height: 62,
+            paddingBottom: 8,
+            paddingTop: 4,
           },
           tabBarLabelStyle: {
             fontSize: 9,
-            fontWeight: '600',
+            fontFamily: 'Inter_600SemiBold',
+            letterSpacing: 0.3,
           },
         }}
       >
@@ -86,7 +89,7 @@ export default function TabLayout() {
           options={{
             title: 'Root',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="shield" size={size - 2} color={color} />
+              <Ionicons name="terminal" size={size - 2} color={color} />
             ),
           }}
         />
@@ -106,12 +109,6 @@ export default function TabLayout() {
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="server" size={size - 2} color={color} />
             ),
-          }}
-        />
-        <Tabs.Screen
-          name="cleaner"
-          options={{
-            href: null,
           }}
         />
       </Tabs>
