@@ -36,7 +36,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: yarn install --ignore-engines --frozen-lockfile
+        run: yarn install --ignore-engines --no-frozen-lockfile
 
       - name: Apply Gradle plugin compatibility patches
         run: python3 .github/scripts/apply-gradle-patches.py
