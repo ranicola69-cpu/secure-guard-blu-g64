@@ -1,88 +1,67 @@
 <div align="center">
 
-```
-███████╗███████╗ ██████╗██╗   ██╗██████╗ ███████╗
-██╔════╝██╔════╝██╔════╝██║   ██║██╔══██╗██╔════╝
-███████╗█████╗  ██║     ██║   ██║██████╔╝█████╗  
-╚════██║██╔══╝  ██║     ██║   ██║██╔══██╗██╔══╝  
-███████║███████╗╚██████╗╚██████╔╝██║  ██║███████╗
-╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
-         ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗
-        ██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗
-        ██║  ███╗██║   ██║███████║██████╔╝██║  ██║
-        ██║   ██║██║   ██║██╔══██║██╔══██╗██║  ██║
-        ╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝
-         ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
-```
+# 🛡️ Secure Guard
 
-# SECURE GUARD
+### *DPHMS Mobile Security Suite — BLU G64*
 
-**Mobile Security Suite for Blu G64**
-
-*DPHMS · 2026*
-
----
-
-[![Download APK](https://img.shields.io/badge/⬇%20DOWNLOAD%20APK-v2.0.0-red?style=for-the-badge&logo=android)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/download/v2.0.0/SecureGuard-2.0.0.apk)
-&nbsp;&nbsp;
-[![Donate via CashApp](https://img.shields.io/badge/💸%20DONATE-%24ranicola1-00D632?style=for-the-badge&logo=cashapp)](https://cash.app/$ranicola1)
-&nbsp;&nbsp;
-[![Donate via PayPal](https://img.shields.io/badge/💰%20PAYPAL-Donate-003087?style=for-the-badge&logo=paypal)](https://www.paypal.com/donate?business=Ranicola69%40gmail.com)
+[![Download APK](https://img.shields.io/badge/Download%20APK-v2.0.0-black?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/download/v2.0.0/SecureGuard-2.0.0.apk)
+[![Android](https://img.shields.io/badge/Android-BLU%20G64-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/latest)
+[![DPHMS](https://img.shields.io/badge/DPHMS-Security-8B0000?style=for-the-badge)](https://github.com/ranicola69-cpu)
 
 </div>
 
 ---
 
-## Features
+> Real-time threat detection, VPN protection, and system-level security monitoring built for the BLU G64.
+
+---
+
+## 📲 Install
+
+```
+1. Download SecureGuard-2.0.0.apk
+2. Android Settings → Unknown Sources → Enable
+3. Open the APK → Install → Launch
+4. Grant permissions when prompted (VPN, network access)
+```
+
+---
+
+## 🔒 Features
 
 | Feature | Description |
-|---|---|
-| 🛡️ Threat Scanner | Detects spyware, bloatware, and malware |
-| 🌐 DNS Control | Switch DNS providers, block trackers |
-| 📡 Network Monitor | Real-time connection visibility |
-| 🔒 VPN Ready | Built-in VPN integration |
-| 🔧 Root Tools | Advanced system-level controls |
+|---------|-------------|
+| **Threat Scanner** | Real-time malware and spyware detection |
+| **VPN Guard** | One-tap VPN protection |
+| **Network Monitor** | Live traffic analysis |
+| **Shizuku Integration** | System-level access for deep scans |
+| **Threat Database** | Synced threat intelligence feed |
+| **Dark UI** | DPHMS-branded interface |
 
 ---
 
-## Device
+## 📋 Requirements
 
-Optimized for **Blu G64** running Android 11+. Compatible with most Android 8.0+ devices.
-
----
-
-## Download
-
-<div align="center">
-
-[![Download APK](https://img.shields.io/badge/Android%20APK-SecureGuard--2.0.0.apk-red?style=flat-square&logo=android)](https://github.com/ranicola69-cpu/secure-guard-blu-g64/releases/download/v2.0.0/SecureGuard-2.0.0.apk)
-
-Enable *Install from unknown sources* before installing.
-
-</div>
+- **Device:** BLU G64 (or compatible Android 10+)
+- **RAM:** 2GB minimum
+- **Storage:** 50MB free
 
 ---
 
-## Threat Database
+## ⚙️ Built With
 
-Live threat definitions pulled from [`secureguard-threat-db`](https://github.com/ranicola69-cpu/secureguard-threat-db). Updated regularly.
-
----
-
-## Support the Work
-
-<div align="center">
-
-[![CashApp](https://img.shields.io/badge/CashApp-%24ranicola1-00D632?style=for-the-badge&logo=cashapp&logoColor=white)](https://cash.app/$ranicola1)
-
-[![PayPal](https://img.shields.io/badge/PayPal-Ranicola69%40gmail.com-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate?business=Ranicola69%40gmail.com)
-
-*All proceeds support independent research and development under DPHMS.*
-
-</div>
+- Expo 55 + React Native 0.79
+- Expo Router v5
+- Custom native modules (Shizuku, VPN)
+- TypeScript
 
 ---
 
 <div align="center">
-<sub>DPHMS · 2026 · All rights reserved</sub>
+
+*DPHMS — Defense Protocol & High-Mobility Security*
+
+[![CashApp](https://img.shields.io/badge/Support-%24ranicola1-00C244?style=flat-square&logo=cashapp)](https://cash.app/$ranicola1)
+[![PayPal](https://img.shields.io/badge/Support-Ranicola69%40gmail.com-003087?style=flat-square&logo=paypal)](https://paypal.me/Ranicola69)
+
 </div>
