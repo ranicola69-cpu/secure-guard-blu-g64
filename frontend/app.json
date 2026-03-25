@@ -1,37 +1,41 @@
 {
   "expo": {
     "name": "Secure Guard",
-    "slug": "secure-guard-blu-g64",
-    "version": "1.8.0",
+    "slug": "secure-guard",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "secureguard",
-    "userInterfaceStyle": "dark",
+    "scheme": "secure-guard",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.dphms.secureguard"
+      "supportsTablet": false
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#0a0a0a"
-      },
-      "package": "com.dphms.secureguard",
-      "versionCode": 10
+      "versionCode": 200,
+      "package": "com.dphms.secureguard"
     },
     "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      "expo-router"
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "96ef22e1-4227-40ef-babf-53267082794a"
-      }
-    },
-    "owner": "ranicola"
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
   }
 }
