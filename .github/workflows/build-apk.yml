@@ -74,6 +74,23 @@ jobs:
           # DO NOT remove from build.gradle includes — same reason
           echo "Worklets stripped from Java autolinking (Gradle project kept for reanimated compatibility)"
 
+      - name: Patch MainApplication.kt (remove New Architecture entry point)
+        run: |
+          echo "Removing DefaultNewArchitectureEntryPoint.load() call that crashes on old arch..."
+          MAIN_APP=$(find frontend/android -name "MainApplication.kt" -path "*/com/dphms/*" | head -1)
+          if [ -n "$MAIN_APP" ]; then
+            echo "Found: $MAIN_APP"
+            # Remove the import
+            sed -i '/import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint/d' "$MAIN_APP"
+            # Remove the load call (may span multiple lines)
+            sed -i '/DefaultNewArchitectureEntryPoint/d' "$MAIN_APP"
+            echo "Patched MainApplication.kt — removed NewArchitecture entry point"
+            echo "--- Patched file ---"
+            cat "$MAIN_APP"
+          else
+            echo "WARNING: MainApplication.kt not found!"
+          fi
+
       - name: Build Debug APK
         working-directory: frontend/android
         env:
