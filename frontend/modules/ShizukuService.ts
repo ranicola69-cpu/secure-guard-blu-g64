@@ -1,11 +1,7 @@
-// Native Shizuku Module TypeScript Wrapper
-// Safe wrapper with graceful degradation for managed Expo builds
 import { NativeModules, NativeEventEmitter, Platform, Linking, Alert } from 'react-native';
 
-// Safely get native module - may be null in managed builds
 const ShizukuModule = Platform.OS === 'android' ? NativeModules?.ShizukuModule : null;
 
-// Create emitter only if module exists
 let shizukuEmitter: NativeEventEmitter | null = null;
 try {
   if (ShizukuModule) {
@@ -34,7 +30,6 @@ export interface CommandResult {
   exitCode: number;
 }
 
-// Check if we're running in native mode (with Shizuku bindings)
 const isNativeMode = (): boolean => {
   return ShizukuModule !== null;
 };
@@ -47,16 +42,13 @@ class ShizukuService {
     this._isNativeAvailable = isNativeMode();
   }
 
-  // Check if native Shizuku bindings are available
   get isNativeAvailable(): boolean {
     return this._isNativeAvailable;
   }
 
-  // Open Shizuku app in Play Store
   async openShizukuPlayStore(): Promise<void> {
     const playStoreUrl = 'market://details?id=moe.shizuku.privileged.api';
     const webUrl = 'https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api';
-    
     try {
       const canOpen = await Linking.canOpenURL(playStoreUrl);
       if (canOpen) {
@@ -69,7 +61,6 @@ class ShizukuService {
     }
   }
 
-  // Open Shizuku app directly
   async openShizukuApp(): Promise<boolean> {
     try {
       const shizukuUrl = 'shizuku://authorize';
@@ -84,7 +75,6 @@ class ShizukuService {
     }
   }
 
-  // Show instructions for using Shizuku
   showShizukuInstructions(): void {
     Alert.alert(
       'Shizuku Setup Required',
@@ -103,13 +93,8 @@ class ShizukuService {
     );
   }
 
-  // Check if Shizuku app is installed
   async isInstalled(): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      // In managed mode, we can't directly check - assume not available
-      // User should check manually
-      return false;
-    }
+    if (!this._isNativeAvailable) return false;
     try {
       return await ShizukuModule.isShizukuInstalled();
     } catch {
@@ -117,11 +102,8 @@ class ShizukuService {
     }
   }
 
-  // Check if Shizuku service is running
   async isRunning(): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      return false;
-    }
+    if (!this._isNativeAvailable) return false;
     try {
       return await ShizukuModule.isShizukuRunning();
     } catch {
@@ -129,11 +111,8 @@ class ShizukuService {
     }
   }
 
-  // Get Shizuku version
   async getVersion(): Promise<number> {
-    if (!this._isNativeAvailable) {
-      return -1;
-    }
+    if (!this._isNativeAvailable) return -1;
     try {
       return await ShizukuModule.getShizukuVersion();
     } catch {
@@ -141,42 +120,26 @@ class ShizukuService {
     }
   }
 
-  // Check if we have Shizuku permission
   async checkPermission(): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      return false;
-    }
+    if (!this._isNativeAvailable) return false;
     try {
-      return await ShizukuModule.checkPermission();
+      return await ShizukuModule.checkShizukuPermission();
     } catch {
       return false;
     }
   }
 
-  // Request Shizuku permission
-  requestPermission(): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (!this._isNativeAvailable) {
-        this.showShizukuInstructions();
-        resolve(false);
-        return;
-      }
-      try {
-        ShizukuModule.requestPermission((granted: boolean) => {
-          resolve(granted);
-        });
-      } catch {
-        this.showShizukuInstructions();
-        resolve(false);
-      }
-    });
+  async requestPermission(): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await ShizukuModule.requestShizukuPermission();
+    } catch {
+      return false;
+    }
   }
 
-  // Get all installed packages
   async getInstalledPackages(): Promise<PackageInfo[]> {
-    if (!this._isNativeAvailable) {
-      return [];
-    }
+    if (!this._isNativeAvailable) return [];
     try {
       return await ShizukuModule.getInstalledPackages();
     } catch {
@@ -184,146 +147,8 @@ class ShizukuService {
     }
   }
 
-  // Force stop an app
-  async forceStopPackage(packageName: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To force stop "${packageName}", please use the Shizuku app directly or run:\n\nadb shell am force-stop ${packageName}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.forceStopPackage(packageName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Clear app cache
-  async clearAppCache(packageName: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To clear cache for "${packageName}", go to:\n\nSettings > Apps > ${packageName} > Storage > Clear Cache`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.clearAppCache(packageName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Uninstall a package
-  async uninstallPackage(packageName: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To uninstall "${packageName}", use Shizuku or run:\n\nadb shell pm uninstall -k --user 0 ${packageName}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.uninstallPackage(packageName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Disable a package (for system apps)
-  async disablePackage(packageName: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To disable "${packageName}", use Shizuku or run:\n\nadb shell pm disable-user --user 0 ${packageName}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.disablePackage(packageName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Enable a package
-  async enablePackage(packageName: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To enable "${packageName}", use Shizuku or run:\n\nadb shell pm enable --user 0 ${packageName}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.enablePackage(packageName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Grant permission to an app
-  async grantPermission(packageName: string, permission: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To grant permission, use Shizuku or run:\n\nadb shell pm grant ${packageName} ${permission}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.grantPermission(packageName, permission);
-    } catch {
-      return false;
-    }
-  }
-
-  // Revoke permission from an app
-  async revokePermission(packageName: string, permission: string): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      Alert.alert(
-        'Shizuku Required',
-        `To revoke permission, use Shizuku or run:\n\nadb shell pm revoke ${packageName} ${permission}`,
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    try {
-      return await ShizukuModule.revokePermission(packageName, permission);
-    } catch {
-      return false;
-    }
-  }
-
-  // Execute a shell command
-  async executeCommand(command: string): Promise<CommandResult> {
-    if (!this._isNativeAvailable) {
-      return {
-        output: '',
-        error: 'Native Shizuku bindings not available. Use Shizuku app directly or run via ADB:\n\nadb shell ' + command,
-        exitCode: -1,
-      };
-    }
-    try {
-      return await ShizukuModule.executeCommand(command);
-    } catch (e: any) {
-      return { output: '', error: e.message || 'Unknown error', exitCode: -1 };
-    }
-  }
-
-  // Get running processes
   async getRunningProcesses(): Promise<ProcessInfo[]> {
-    if (!this._isNativeAvailable) {
-      return [];
-    }
+    if (!this._isNativeAvailable) return [];
     try {
       return await ShizukuModule.getRunningProcesses();
     } catch {
@@ -331,7 +156,44 @@ class ShizukuService {
     }
   }
 
-  // Event listeners (only work in native mode)
+  async executeCommand(command: string): Promise<CommandResult> {
+    if (!this._isNativeAvailable) {
+      return { output: '', error: 'Shizuku not available', exitCode: -1 };
+    }
+    try {
+      return await ShizukuModule.executeCommand(command);
+    } catch {
+      return { output: '', error: 'Command failed', exitCode: -1 };
+    }
+  }
+
+  async uninstallPackage(packageName: string): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await ShizukuModule.uninstallPackage(packageName);
+    } catch {
+      return false;
+    }
+  }
+
+  async disablePackage(packageName: string): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await ShizukuModule.disablePackage(packageName);
+    } catch {
+      return false;
+    }
+  }
+
+  async clearPackageData(packageName: string): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await ShizukuModule.clearPackageData(packageName);
+    } catch {
+      return false;
+    }
+  }
+
   onConnected(callback: () => void) {
     if (!shizukuEmitter) return { remove: () => {} };
     try {
@@ -369,9 +231,7 @@ class ShizukuService {
 
   removeAllListeners() {
     this.listeners.forEach((subscription) => {
-      try {
-        subscription.remove();
-      } catch {}
+      try { subscription.remove(); } catch {}
     });
     this.listeners.clear();
   }
