@@ -62,18 +62,17 @@ jobs:
         run: python3 .github/scripts/fix-android-build.py
 
 
-      - name: Strip worklets from autolinking (prevents native crash)
+      - name: Strip worklets from Java autolinking only (prevents native crash)
         run: |
-          echo "Removing react-native-worklets from autolinking to prevent runtime crash..."
-          # Remove worklets entries from expo-modules autolinking
+          echo "Removing react-native-worklets from Java autolinking ONLY..."
+          echo "NOTE: Keep worklets in settings.gradle and build.gradle (reanimated needs it as a Gradle project)"
+          # Remove worklets entries from expo-modules autolinking (Java class registration)
           find frontend/android -name "ExpoModulesPackageList.java" -exec sed -i '/worklets/Id' {} \;
-          # Remove worklets from React Native CLI autolinking  
+          # Remove worklets from React Native CLI autolinking (Java class registration)
           find frontend/android -name "PackageList.java" -exec sed -i '/worklets/Id' {} \;
-          # Remove worklets include from settings.gradle
-          sed -i '/react-native-worklets/d' frontend/android/settings.gradle 2>/dev/null || true
-          # Remove worklets from build includes
-          find frontend/android -name "build.gradle" -exec sed -i '/react-native-worklets/d' {} \;
-          echo "Worklets stripped from autolinking config"
+          # DO NOT remove from settings.gradle — reanimated build.gradle references :react-native-worklets
+          # DO NOT remove from build.gradle includes — same reason
+          echo "Worklets stripped from Java autolinking (Gradle project kept for reanimated compatibility)"
 
       - name: Build Debug APK
         working-directory: frontend/android
