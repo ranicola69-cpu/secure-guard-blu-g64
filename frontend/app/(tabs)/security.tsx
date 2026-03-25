@@ -204,7 +204,7 @@ export default function SecurityScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Security Center</Text>
-          <Text style={styles.headerSub}>DPHMS Secure Guard v1.5</Text>
+          <Text style={styles.headerSub}>DPHMS Secure Guard v0.1.0</Text>
         </View>
         <DonateButton />
       </View>
