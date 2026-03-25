@@ -2,17 +2,20 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SplashScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 800,
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
@@ -23,15 +26,24 @@ export default function SplashScreen() {
       }),
     ]).start();
 
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+
     const timer = setTimeout(() => {
+      pulse.stop();
       router.replace('/(tabs)/security');
-    }, 3000);
+    }, 2800);
 
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Animated.View
         style={[
           styles.content,
@@ -41,31 +53,34 @@ export default function SplashScreen() {
           },
         ]}
       >
-        <View style={styles.iconContainer}>
-          <Ionicons name="shield-checkmark" size={100} color="#00ff88" />
-        </View>
+        <Animated.View style={[styles.iconRing, { transform: [{ scale: pulseAnim }] }]}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="shield-checkmark" size={72} color="#00ff88" />
+          </View>
+        </Animated.View>
+
         <Text style={styles.title}>SECURE GUARD</Text>
         <Text style={styles.subtitle}>Military Grade Security</Text>
-        <Text style={styles.customFont}>Doctor Power House</Text>
-        
+
         <View style={styles.badge}>
+          <Ionicons name="hardware-chip" size={12} color="#00ff88" />
           <Text style={styles.badgeText}>POWERED BY SHIZUKU</Text>
         </View>
-        
+
         <View style={styles.developerSection}>
           <Text style={styles.developerLabel}>Developed by</Text>
           <Text style={styles.developerName}>Richard Carmen Anicola</Text>
           <View style={styles.companyBadge}>
-            <Ionicons name="business" size={14} color="#00ff88" />
+            <Ionicons name="business" size={13} color="#00ff88" />
             <Text style={styles.companyName}>DPHMS</Text>
           </View>
           <Text style={styles.companyFull}>Doctor Power House Mobile Solutions</Text>
         </View>
       </Animated.View>
-      
-      <View style={styles.footer}>
-        <Text style={styles.versionText}>v1.5.0 - STABLE</Text>
-      </View>
+
+      <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
+        <Text style={styles.versionText}>v1.5.0 STABLE</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -80,87 +95,103 @@ const styles = StyleSheet.create({
   content: {
     alignItems: 'center',
   },
+  iconRing: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#00ff8808',
+    borderWidth: 1,
+    borderColor: '#00ff8830',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+  },
   iconContainer: {
-    marginBottom: 24,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: '#00ff8812',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#00ff8840',
   },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontFamily: 'Inter_700Bold',
     color: '#00ff88',
-    marginBottom: 8,
-    letterSpacing: 2,
+    marginBottom: 6,
+    letterSpacing: 3,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 12,
-    letterSpacing: 1,
-  },
-  customFont: {
-    fontFamily: 'AshleyNicole',
-    fontSize: 28,
-    color: '#00ff88',
-    marginBottom: 24,
-    textShadowColor: '#00ff8850',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 20,
+    letterSpacing: 2,
+    fontFamily: 'Inter_400Regular',
   },
   badge: {
-    backgroundColor: '#00ff8820',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#00ff8810',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#00ff88',
+    borderColor: '#00ff8830',
     marginBottom: 40,
   },
   badgeText: {
     color: '#00ff88',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
     letterSpacing: 1.5,
   },
   developerSection: {
     alignItems: 'center',
-    marginTop: 20,
   },
   developerLabel: {
     fontSize: 11,
-    color: '#666',
-    marginBottom: 4,
+    color: '#555',
+    marginBottom: 3,
+    fontFamily: 'Inter_400Regular',
   },
   developerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#ddd',
     marginBottom: 12,
   },
   companyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#00ff8815',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-    marginBottom: 6,
+    backgroundColor: '#00ff8810',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    gap: 5,
+    marginBottom: 5,
   },
   companyName: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
     color: '#00ff88',
     letterSpacing: 1,
   },
   companyFull: {
     fontSize: 10,
-    color: '#00ff8880',
+    color: '#00ff8860',
+    fontFamily: 'Inter_400Regular',
   },
   footer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 50,
   },
   versionText: {
-    fontSize: 12,
-    color: '#333',
+    fontSize: 11,
+    color: '#2a2a2a',
+    fontFamily: 'Inter_400Regular',
+    letterSpacing: 1,
   },
 });
