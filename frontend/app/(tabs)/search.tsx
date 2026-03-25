@@ -1,447 +1,298 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Linking,
-  Platform,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  TextInput, Linking, Alert, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
-import DonateButton from '../../components/DonateButton';
-import { Shizuku } from '../../modules/ShizukuService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DonateButton from '@/components/DonateButton';
+
+const C = {
+  bg: '#0a0a0a', card: '#111', border: '#1e1e1e',
+  green: '#00ff88', blue: '#00aaff', orange: '#ff9500',
+  text: '#fff', dim: '#999',
+};
 
 type SearchTab = 'rom' | 'xda';
 
-const COLORS = {
-  bg: '#0a0a0a',
-  card: '#111',
-  border: '#1e1e1e',
-  green: '#00ff88',
-  blue: '#00aaff',
-  red: '#ff3366',
-  orange: '#ff9500',
-  yellow: '#ffdd00',
-  dim: '#444',
-  text: '#fff',
-  textDim: '#888',
-};
-
-interface RomSource {
-  name: string;
-  icon: string;
-  color: string;
-  description: string;
-  getUrl: (model: string, manufacturer: string) => string;
-}
-
-const ROM_SOURCES: RomSource[] = [
-  {
-    name: 'XDA Forums',
-    icon: 'chatbubbles',
-    color: COLORS.orange,
-    description: 'Community ROMs, guides & support',
-    getUrl: (model, _) => `https://xdaforums.com/search?query=${encodeURIComponent(model + ' ROM')}&type=post`,
-  },
-  {
-    name: 'GSM Arena',
-    icon: 'phone-portrait',
-    color: COLORS.blue,
-    description: 'Official firmware & specs',
-    getUrl: (model, mfg) => `https://www.gsmarena.com/search.php3?sQuickSearch=1&sName=${encodeURIComponent(mfg + ' ' + model)}`,
-  },
-  {
-    name: 'Sammobile (Samsung)',
-    icon: 'layers',
-    color: '#1428a0',
-    description: 'Samsung stock firmware database',
-    getUrl: (model, _) => `https://www.sammobile.com/samsung/firmware/${encodeURIComponent(model)}/`,
-  },
-  {
-    name: 'Firmware.Science',
-    icon: 'server',
-    color: COLORS.green,
-    description: 'Multi-brand firmware archive',
-    getUrl: (model, mfg) => `https://firmware.science/?q=${encodeURIComponent(mfg + ' ' + model)}`,
-  },
-  {
-    name: 'Android File Host',
-    icon: 'cloud-download',
-    color: '#5bc0de',
-    description: 'Custom ROM hosting & archives',
-    getUrl: (model, _) => `https://androidfilehost.com/?w=search&q=${encodeURIComponent(model)}`,
-  },
+const ROM_RESOURCES = [
   {
     name: 'LineageOS',
-    icon: 'git-branch',
-    color: '#9BC200',
-    description: 'Official LineageOS device support',
-    getUrl: (model, _) => `https://wiki.lineageos.org/devices/${encodeURIComponent(model.toLowerCase().replace(/\s+/g, '_'))}/`,
+    description: 'Popular AOSP-based ROM with monthly security updates. Clean and lightweight.',
+    url: 'https://lineageos.org',
+    tag: 'AOSP',
+    color: C.green,
   },
   {
-    name: 'PixelExperience',
-    icon: 'star',
-    color: '#0052CC',
-    description: 'Pixel-like AOSP experience',
-    getUrl: (model, _) => `https://get.pixelexperience.org/devices?q=${encodeURIComponent(model)}`,
+    name: 'CalyxOS',
+    description: 'Privacy-focused ROM with microG and built-in firewall. Ideal for security-conscious users.',
+    url: 'https://calyxos.org',
+    tag: 'Privacy',
+    color: C.blue,
   },
   {
-    name: 'Evolution X',
-    icon: 'planet',
-    color: '#8B00FF',
-    description: 'Feature-rich Pixel-based ROM',
-    getUrl: (model, _) => `https://evolution-x.org/devices?search=${encodeURIComponent(model)}`,
+    name: 'GrapheneOS',
+    description: 'Maximum security hardened Android. Focus on sandboxing and exploit mitigation.',
+    url: 'https://grapheneos.org',
+    tag: 'Security',
+    color: C.orange,
+  },
+  {
+    name: '/e/ OS',
+    description: 'Degooglified Android with MicroG. Privacy by default, user friendly.',
+    url: 'https://e.foundation',
+    tag: 'DeGoogle',
+    color: '#a855f7',
+  },
+  {
+    name: 'DivestOS',
+    description: 'Privacy-focused LineageOS fork with extended device support.',
+    url: 'https://divestos.org',
+    tag: 'FOSS',
+    color: '#f59e0b',
   },
 ];
 
-const XDA_CATEGORIES = [
-  { label: 'ROMs', query: 'ROM stock firmware' },
-  { label: 'Recovery', query: 'TWRP recovery' },
-  { label: 'Kernels', query: 'kernel' },
-  { label: 'Root/Magisk', query: 'Magisk root' },
-  { label: 'Mods', query: 'mod xposed' },
-  { label: 'Guides', query: 'guide tutorial' },
+const TOOLS = [
+  { name: 'TWRP', desc: 'Team Win Recovery Project — flash ROMs and backups', url: 'https://twrp.me', icon: 'refresh-circle' },
+  { name: 'Magisk', desc: 'Systemless root solution for Android', url: 'https://github.com/topjohnwu/Magisk', icon: 'code-slash' },
+  { name: 'ADB Toolkit', desc: 'Android Debug Bridge command reference', url: 'https://developer.android.com/tools/adb', icon: 'terminal' },
+  { name: 'Shizuku', desc: 'ADB-level access without root using wireless debugging', url: 'https://shizuku.rikka.app', icon: 'key' },
 ];
 
 export default function SearchScreen() {
-  const [tab, setTab] = useState<SearchTab>('rom');
-  const [deviceModel, setDeviceModel] = useState('');
-  const [deviceManufacturer, setDeviceManufacturer] = useState('');
-  const [customModel, setCustomModel] = useState('');
-  const [detectingDevice, setDetectingDevice] = useState(false);
-  const [webUrl, setWebUrl] = useState('');
-  const [showWebView, setShowWebView] = useState(false);
-  const [webLoading, setWebLoading] = useState(false);
-  const [xdaQuery, setXdaQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const insets = useSafeAreaInsets();
+  const [activeTab, setActiveTab] = useState<SearchTab>('rom');
+  const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    detectDevice();
-  }, []);
-
-  const detectDevice = async () => {
-    setDetectingDevice(true);
-    try {
-      const ok = await Shizuku.checkPermission();
-      if (ok) {
-        const model = (await Shizuku.executeCommand('getprop ro.product.model 2>/dev/null')).output;
-        const mfg = (await Shizuku.executeCommand('getprop ro.product.manufacturer 2>/dev/null')).output;
-        setDeviceModel(model.trim());
-        setDeviceManufacturer(mfg.trim());
-        setCustomModel(model.trim());
-      }
-    } catch {
-      // fallback
-    } finally {
-      setDetectingDevice(false);
-    }
+  const openUrl = (url: string) => {
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open link'));
   };
 
-  const effectiveModel = customModel || deviceModel || 'BLU G64';
-  const effectiveManufacturer = deviceManufacturer || 'BLU';
-
-  const openSource = (source: RomSource) => {
-    const url = source.getUrl(effectiveModel, effectiveManufacturer);
-    setWebUrl(url);
-    setShowWebView(true);
+  const searchXDA = () => {
+    const searchUrl = `https://forum.xda-developers.com/search/?q=${encodeURIComponent(query || 'Blu G64 ROM')}`;
+    openUrl(searchUrl);
   };
-
-  const openXdaSearch = (extra?: string) => {
-    const q = (xdaQuery + (extra ? ' ' + extra : '')).trim() || effectiveModel + ' ROM';
-    const url = `https://xdaforums.com/search?query=${encodeURIComponent(effectiveModel + ' ' + q)}&type=post`;
-    setWebUrl(url);
-    setShowWebView(true);
-  };
-
-  const openXdaSubforum = (category: string) => {
-    const url = `https://xdaforums.com/search?query=${encodeURIComponent(effectiveModel + ' ' + category)}&type=thread&sortBy=relevance`;
-    setWebUrl(url);
-    setShowWebView(true);
-  };
-
-  if (showWebView) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.webHeader}>
-          <TouchableOpacity onPress={() => setShowWebView(false)} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.text} />
-          </TouchableOpacity>
-          <Text style={styles.webUrl} numberOfLines={1}>{webUrl}</Text>
-          {webLoading && <ActivityIndicator size="small" color={COLORS.green} style={{ marginLeft: 8 }} />}
-        </View>
-        <WebView
-          source={{ uri: webUrl }}
-          style={{ flex: 1 }}
-          onLoadStart={() => setWebLoading(true)}
-          onLoadEnd={() => setWebLoading(false)}
-          onError={() => setWebLoading(false)}
-          javaScriptEnabled
-          domStorageEnabled
-          userAgent="Mozilla/5.0 (Linux; Android 11; BLU G64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-        />
-      </View>
-    );
-  }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>ROM & Forums</Text>
-          <Text style={styles.headerSub}>Stock ROM · XDA Search</Text>
-        </View>
+        <Text style={styles.headerTitle}>ROM Finder</Text>
         <DonateButton />
       </View>
 
-      {/* Device Bar */}
-      <View style={styles.deviceBar}>
-        <Ionicons name="phone-portrait" size={16} color={COLORS.green} />
-        <TextInput
-          style={styles.modelInput}
-          value={customModel}
-          onChangeText={setCustomModel}
-          placeholder="Device model (e.g. BLU G64)"
-          placeholderTextColor={COLORS.dim}
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
-        <TouchableOpacity onPress={detectDevice} style={styles.detectBtn}>
-          {detectingDevice
-            ? <ActivityIndicator size="small" color={COLORS.bg} />
-            : <Ionicons name="locate" size={16} color={COLORS.bg} />
-          }
-        </TouchableOpacity>
-      </View>
-
       {/* Tabs */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'rom' && styles.tabItemActive]}
-          onPress={() => setTab('rom')}>
-          <Ionicons name="cloud-download" size={16} color={tab === 'rom' ? COLORS.bg : COLORS.textDim} />
-          <Text style={[styles.tabLabel, tab === 'rom' && styles.tabLabelActive]}>Stock ROM</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'xda' && styles.tabItemActive]}
-          onPress={() => setTab('xda')}>
-          <Ionicons name="chatbubbles" size={16} color={tab === 'xda' ? COLORS.bg : COLORS.textDim} />
-          <Text style={[styles.tabLabel, tab === 'xda' && styles.tabLabelActive]}>XDA Forums</Text>
-        </TouchableOpacity>
+      <View style={styles.tabs}>
+        {([
+          { key: 'rom', label: 'Custom ROMs' },
+          { key: 'xda', label: 'XDA Search' },
+        ] as const).map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            onPress={() => setActiveTab(tab.key)}
+          >
+            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {tab === 'rom' ? (
-        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: 20 }}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Firmware Sources</Text>
-            <Text style={styles.sectionSub}>for {effectiveManufacturer} {effectiveModel}</Text>
-          </View>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'rom' && (
+          <>
+            <View style={styles.infoCard}>
+              <Ionicons name="information-circle" size={20} color={C.blue} />
+              <Text style={styles.infoText}>
+                These ROMs may or may not support the Blu G64. Always verify compatibility on XDA before flashing.
+              </Text>
+            </View>
 
-          {ROM_SOURCES.map(source => (
-            <TouchableOpacity key={source.name} style={styles.sourceCard} onPress={() => openSource(source)}>
-              <View style={[styles.sourceIcon, { backgroundColor: source.color + '22' }]}>
-                <Ionicons name={source.icon as any} size={22} color={source.color} />
-              </View>
-              <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{source.name}</Text>
-                <Text style={styles.sourceDesc}>{source.description}</Text>
-              </View>
-              <Ionicons name="open-outline" size={18} color={COLORS.dim} />
-            </TouchableOpacity>
-          ))}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>POPULAR CUSTOM ROMs</Text>
+              {ROM_RESOURCES.map(rom => (
+                <TouchableOpacity key={rom.name} style={styles.romCard} onPress={() => openUrl(rom.url)}>
+                  <View style={[styles.romTag, { backgroundColor: rom.color + '20', borderColor: rom.color + '40' }]}>
+                    <Text style={[styles.romTagText, { color: rom.color }]}>{rom.tag}</Text>
+                  </View>
+                  <View style={styles.romInfo}>
+                    <Text style={styles.romName}>{rom.name}</Text>
+                    <Text style={styles.romDesc}>{rom.description}</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={18} color="#444" />
+                </TouchableOpacity>
+              ))}
+            </View>
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Direct Links</Text>
-          </View>
-          {[
-            { label: 'BLU Official Support', url: 'https://www.bluproducts.com/support', icon: 'help-circle' },
-            { label: 'BLU Firmware Updates', url: 'https://www.bluproducts.com/firmware', icon: 'download' },
-            { label: 'Android Security Bulletins', url: 'https://source.android.com/docs/security/bulletin', icon: 'shield-checkmark' },
-          ].map(link => (
-            <TouchableOpacity key={link.url} style={styles.sourceCard}
-              onPress={() => { setWebUrl(link.url); setShowWebView(true); }}>
-              <View style={[styles.sourceIcon, { backgroundColor: COLORS.blue + '22' }]}>
-                <Ionicons name={link.icon as any} size={22} color={COLORS.blue} />
-              </View>
-              <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{link.label}</Text>
-                <Text style={styles.sourceDesc}>{link.url}</Text>
-              </View>
-              <Ionicons name="open-outline" size={18} color={COLORS.dim} />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      ) : (
-        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: 20 }}>
-          {/* XDA Search bar */}
-          <View style={styles.xdaSearchBar}>
-            <TextInput
-              style={styles.xdaSearchInput}
-              value={xdaQuery}
-              onChangeText={setXdaQuery}
-              placeholder={`Search XDA for ${effectiveModel}…`}
-              placeholderTextColor={COLORS.dim}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              onSubmitEditing={() => openXdaSearch()}
-            />
-            <TouchableOpacity style={styles.xdaSearchBtn} onPress={() => openXdaSearch()}>
-              <Ionicons name="search" size={18} color={COLORS.bg} />
-            </TouchableOpacity>
-          </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>ESSENTIAL TOOLS</Text>
+              {TOOLS.map(tool => (
+                <TouchableOpacity key={tool.name} style={styles.toolCard} onPress={() => openUrl(tool.url)}>
+                  <View style={styles.toolIcon}>
+                    <Ionicons name={tool.icon as any} size={20} color={C.green} />
+                  </View>
+                  <View style={styles.toolInfo}>
+                    <Text style={styles.toolName}>{tool.name}</Text>
+                    <Text style={styles.toolDesc}>{tool.desc}</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={16} color="#444" />
+                </TouchableOpacity>
+              ))}
+            </View>
 
-          {/* Quick categories */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quick Search</Text>
-            <Text style={styles.sectionSub}>{effectiveManufacturer} {effectiveModel}</Text>
-          </View>
-          <View style={styles.categoryGrid}>
-            {XDA_CATEGORIES.map(cat => (
-              <TouchableOpacity key={cat.label} style={styles.categoryChip}
-                onPress={() => openXdaSubforum(cat.query)}>
-                <Text style={styles.categoryLabel}>{cat.label}</Text>
+            <View style={styles.warningCard}>
+              <Ionicons name="warning" size={22} color={C.orange} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.warningTitle}>WARNING: Flash at your own risk</Text>
+                <Text style={styles.warningDesc}>
+                  Installing custom ROMs may void your warranty and can brick your device if done incorrectly. Always back up your data first using TWRP or ADB.
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
+
+        {activeTab === 'xda' && (
+          <>
+            <View style={styles.xdaSearchCard}>
+              <Text style={styles.xdaTitle}>Search XDA Developers</Text>
+              <Text style={styles.xdaDesc}>Find ROMs, mods, and guides specific to your device</Text>
+              <View style={styles.searchBar}>
+                <Ionicons name="search" size={16} color="#666" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="e.g., Blu G64 ROM, kernel..."
+                  placeholderTextColor="#555"
+                  value={query}
+                  onChangeText={setQuery}
+                  returnKeyType="search"
+                  onSubmitEditing={searchXDA}
+                />
+              </View>
+              <TouchableOpacity style={styles.searchBtn} onPress={searchXDA}>
+                <Ionicons name="search" size={18} color={C.bg} />
+                <Text style={styles.searchBtnText}>SEARCH XDA FORUMS</Text>
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
 
-          {/* Forum sections */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>XDA Sections</Text>
-          </View>
-          {[
-            {
-              title: 'Device Forum',
-              desc: `Main ${effectiveManufacturer} ${effectiveModel} discussion`,
-              icon: 'chatbubbles',
-              color: COLORS.orange,
-              url: `https://xdaforums.com/search?query=${encodeURIComponent(effectiveManufacturer + ' ' + effectiveModel)}&type=thread`,
-            },
-            {
-              title: 'ROM Development',
-              desc: 'Custom ROMs for your device',
-              icon: 'code-slash',
-              color: COLORS.green,
-              url: `https://xdaforums.com/search?query=${encodeURIComponent(effectiveModel + ' custom ROM development')}&type=thread`,
-            },
-            {
-              title: 'Themes & Apps',
-              desc: 'Themes, mods, and customizations',
-              icon: 'color-palette',
-              color: '#aa55ff',
-              url: `https://xdaforums.com/search?query=${encodeURIComponent(effectiveModel + ' theme mod')}&type=thread`,
-            },
-            {
-              title: 'General Discussion',
-              desc: 'Tips, tricks, and help',
-              icon: 'people',
-              color: COLORS.blue,
-              url: `https://xdaforums.com/search?query=${encodeURIComponent(effectiveModel + ' help tips tricks')}&type=post`,
-            },
-            {
-              title: 'XDA Portal',
-              desc: 'Latest Android news & guides',
-              icon: 'newspaper',
-              color: COLORS.yellow,
-              url: `https://xda-developers.com/search/?q=${encodeURIComponent(effectiveModel)}`,
-            },
-          ].map(item => (
-            <TouchableOpacity key={item.title} style={styles.sourceCard}
-              onPress={() => { setWebUrl(item.url); setShowWebView(true); }}>
-              <View style={[styles.sourceIcon, { backgroundColor: item.color + '22' }]}>
-                <Ionicons name={item.icon as any} size={22} color={item.color} />
-              </View>
-              <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{item.title}</Text>
-                <Text style={styles.sourceDesc}>{item.desc}</Text>
-              </View>
-              <Ionicons name="open-outline" size={18} color={COLORS.dim} />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>QUICK SEARCHES</Text>
+              {[
+                { label: 'Blu G64 ROM', q: 'Blu G64 custom ROM' },
+                { label: 'Blu G64 Kernel', q: 'Blu G64 kernel' },
+                { label: 'Blu G64 Root', q: 'Blu G64 root guide' },
+                { label: 'Blu G64 TWRP', q: 'Blu G64 TWRP recovery' },
+                { label: 'Blu G64 LineageOS', q: 'Blu G64 LineageOS' },
+              ].map(({ label, q }) => (
+                <TouchableOpacity
+                  key={label}
+                  style={styles.quickSearchItem}
+                  onPress={() => openUrl(`https://forum.xda-developers.com/search/?q=${encodeURIComponent(q)}`)}
+                >
+                  <Ionicons name="search" size={16} color={C.green} />
+                  <Text style={styles.quickSearchText}>{label}</Text>
+                  <Ionicons name="open-outline" size={14} color="#444" />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.xdaDirectBtn} onPress={() => openUrl('https://forum.xda-developers.com/')}>
+              <Ionicons name="globe" size={18} color={C.text} />
+              <Text style={styles.xdaDirectBtnText}>Open XDA Developers Forum</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+          </>
+        )}
+
+        <View style={{ height: 80 }} />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: C.bg },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingTop: 50, paddingBottom: 12,
-    borderBottomColor: COLORS.border, borderBottomWidth: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: COLORS.text },
-  headerSub: { fontSize: 11, color: COLORS.orange, fontWeight: '600', marginTop: 2 },
-
-  deviceBar: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12,
-    paddingVertical: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.card,
+  headerTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: C.text },
+  tabs: {
+    flexDirection: 'row', backgroundColor: '#111',
+    marginHorizontal: 16, marginVertical: 12, borderRadius: 12,
+    padding: 3, borderWidth: 1, borderColor: '#1e1e1e',
   },
-  modelInput: {
-    flex: 1, color: COLORS.text, fontSize: 14, paddingVertical: 4,
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 10 },
+  tabActive: { backgroundColor: '#00ff8815' },
+  tabText: { fontSize: 13, color: C.dim, fontFamily: 'Inter_500Medium' },
+  tabTextActive: { color: C.green, fontFamily: 'Inter_700Bold' },
+  content: { flex: 1 },
+  infoCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#00aaff08', marginHorizontal: 16, marginBottom: 16,
+    padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#00aaff25',
   },
-  detectBtn: {
-    backgroundColor: COLORS.green, borderRadius: 6,
-    paddingHorizontal: 10, paddingVertical: 6,
-  },
-
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 12 },
-  tabItemActive: { borderBottomWidth: 2, borderBottomColor: COLORS.green },
-  tabLabel: { fontSize: 13, color: COLORS.textDim, fontWeight: '600' },
-  tabLabelActive: { color: COLORS.green },
-
-  scroll: { flex: 1, padding: 12 },
-  sectionHeader: { marginBottom: 10, marginTop: 4 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text },
-  sectionSub: { fontSize: 11, color: COLORS.textDim, marginTop: 2 },
-
-  sourceCard: {
+  infoText: { flex: 1, fontSize: 12, color: '#aaa', fontFamily: 'Inter_400Regular', lineHeight: 18 },
+  section: { paddingHorizontal: 16, marginBottom: 20 },
+  sectionTitle: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#555', letterSpacing: 1.5, marginBottom: 10 },
+  romCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.card, borderRadius: 10, padding: 12,
-    marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: C.border,
   },
-  sourceIcon: {
-    width: 44, height: 44, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
+  romTag: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+    borderWidth: 1, alignSelf: 'flex-start',
   },
-  sourceInfo: { flex: 1 },
-  sourceName: { fontSize: 14, fontWeight: '600', color: COLORS.text },
-  sourceDesc: { fontSize: 12, color: COLORS.textDim, marginTop: 2 },
-
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  categoryChip: {
-    backgroundColor: COLORS.card, borderRadius: 20, paddingHorizontal: 14,
-    paddingVertical: 8, borderWidth: 1, borderColor: COLORS.border,
+  romTagText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  romInfo: { flex: 1 },
+  romName: { fontSize: 14, fontFamily: 'Inter_700Bold', color: C.text, marginBottom: 3 },
+  romDesc: { fontSize: 11, color: C.dim, fontFamily: 'Inter_400Regular', lineHeight: 16 },
+  toolCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: C.border,
   },
-  categoryLabel: { fontSize: 13, color: COLORS.orange, fontWeight: '600' },
-
-  xdaSearchBar: {
-    flexDirection: 'row', gap: 8, marginBottom: 16,
+  toolIcon: {
+    width: 42, height: 42, borderRadius: 10,
+    backgroundColor: '#00ff8810', alignItems: 'center', justifyContent: 'center',
   },
-  xdaSearchInput: {
-    flex: 1, backgroundColor: COLORS.card, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 10, color: COLORS.text,
-    fontSize: 14, borderWidth: 1, borderColor: COLORS.border,
+  toolInfo: { flex: 1 },
+  toolName: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: C.text, marginBottom: 2 },
+  toolDesc: { fontSize: 11, color: C.dim, fontFamily: 'Inter_400Regular' },
+  warningCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: '#ff950010', marginHorizontal: 16, marginBottom: 16,
+    padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#ff950030',
   },
-  xdaSearchBtn: {
-    backgroundColor: COLORS.orange, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
+  warningTitle: { fontSize: 13, fontFamily: 'Inter_700Bold', color: C.orange, marginBottom: 4 },
+  warningDesc: { fontSize: 11, color: '#aa8866', fontFamily: 'Inter_400Regular', lineHeight: 16 },
+  xdaSearchCard: {
+    backgroundColor: C.card, margin: 16, borderRadius: 16, padding: 20,
+    borderWidth: 1, borderColor: C.border, gap: 12,
   },
-
-  webHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingTop: 50, paddingBottom: 10, paddingHorizontal: 12,
-    backgroundColor: COLORS.card, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    gap: 8,
+  xdaTitle: { fontSize: 17, fontFamily: 'Inter_700Bold', color: C.text },
+  xdaDesc: { fontSize: 12, color: C.dim, fontFamily: 'Inter_400Regular' },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#1a1a1a', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#2a2a2a',
   },
-  backBtn: { padding: 4 },
-  webUrl: { flex: 1, fontSize: 12, color: COLORS.textDim },
+  searchInput: { flex: 1, fontSize: 14, color: C.text, fontFamily: 'Inter_400Regular' },
+  searchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: C.green, borderRadius: 10, paddingVertical: 13,
+  },
+  searchBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: C.bg, letterSpacing: 0.5 },
+  quickSearchItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.card, borderRadius: 10, padding: 14, marginBottom: 6,
+    borderWidth: 1, borderColor: C.border,
+  },
+  quickSearchText: { flex: 1, fontSize: 13, color: C.text, fontFamily: 'Inter_400Regular' },
+  xdaDirectBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: '#1a1a1a', marginHorizontal: 16, marginBottom: 16,
+    borderRadius: 12, paddingVertical: 14, borderWidth: 1, borderColor: '#2a2a2a',
+  },
+  xdaDirectBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: C.text },
 });
