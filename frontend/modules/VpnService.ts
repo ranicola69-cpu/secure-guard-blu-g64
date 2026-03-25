@@ -1,11 +1,7 @@
-// Native VPN Module TypeScript Wrapper
-// Safe wrapper with graceful degradation for managed Expo builds
 import { NativeModules, NativeEventEmitter, Platform, Linking, Alert } from 'react-native';
 
-// Safely get native module - may be null in managed builds
 const VpnModule = Platform.OS === 'android' ? NativeModules?.VpnModule : null;
 
-// Create emitter only if module exists
 let vpnEmitter: NativeEventEmitter | null = null;
 try {
   if (VpnModule) {
@@ -26,7 +22,6 @@ export interface PrivateDnsResult {
   instructions: string;
 }
 
-// Check if we're running in native mode (with VPN bindings)
 const isNativeMode = (): boolean => {
   return VpnModule !== null;
 };
@@ -41,12 +36,10 @@ class VpnService {
     this._isNativeAvailable = isNativeMode();
   }
 
-  // Check if native VPN bindings are available
   get isNativeAvailable(): boolean {
     return this._isNativeAvailable;
   }
 
-  // Open Android VPN settings
   async openVpnSettings(): Promise<void> {
     try {
       if (Platform.OS === 'android') {
@@ -61,7 +54,6 @@ class VpnService {
     }
   }
 
-  // Open Android Private DNS settings
   async openPrivateDnsSettings(): Promise<void> {
     try {
       if (Platform.OS === 'android') {
@@ -80,169 +72,79 @@ class VpnService {
     }
   }
 
-  // Show DNS configuration instructions
-  showDnsInstructions(dnsServer: string): void {
-    const providers: Record<string, string> = {
-      '1.1.1.1': '1dot1dot1dot1.cloudflare-dns.com',
-      '1.0.0.1': '1dot1dot1dot1.cloudflare-dns.com',
-      '8.8.8.8': 'dns.google',
-      '8.8.4.4': 'dns.google',
-      '9.9.9.9': 'dns.quad9.net',
-      '149.112.112.112': 'dns.quad9.net',
-      '208.67.222.222': 'doh.opendns.com',
-      '208.67.220.220': 'doh.opendns.com',
-    };
-
-    const hostname = providers[dnsServer] || dnsServer;
-
-    Alert.alert(
-      'Configure Secure DNS',
-      `To enable DNS protection system-wide:\n\n` +
-      `1. Open Settings > Network & Internet\n` +
-      `2. Tap "Private DNS"\n` +
-      `3. Select "Private DNS provider hostname"\n` +
-      `4. Enter: ${hostname}\n` +
-      `5. Tap Save\n\n` +
-      `This encrypts all DNS queries from your device.`,
-      [
-        { text: 'Open Settings', onPress: () => this.openPrivateDnsSettings() },
-        { text: 'OK' },
-      ]
-    );
-  }
-
-  // Check if VPN is connected
-  async isConnected(): Promise<boolean> {
+  async prepareVpn(): Promise<boolean> {
     if (!this._isNativeAvailable) {
-      return this._simulatedConnection;
+      Alert.alert(
+        'VPN Not Available',
+        'VPN requires a native Android build. On this device, configure Private DNS in Android settings for DNS protection.\n\nGo to: Settings > Network & Internet > Private DNS',
+        [
+          { text: 'Open DNS Settings', onPress: () => this.openPrivateDnsSettings() },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+      return false;
     }
     try {
-      return await VpnModule.isVpnConnected();
-    } catch {
-      return this._simulatedConnection;
-    }
-  }
-
-  // Get current DNS server
-  async getCurrentDns(): Promise<string> {
-    if (!this._isNativeAvailable) {
-      return this._simulatedDns;
-    }
-    try {
-      return await VpnModule.getCurrentDns();
-    } catch {
-      return this._simulatedDns;
-    }
-  }
-
-  // Prepare VPN (request permission)
-  prepareVpn(): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (!this._isNativeAvailable) {
-        // In managed mode, show instructions
-        Alert.alert(
-          'VPN Setup',
-          'This app uses DNS-over-HTTPS for secure browsing.\n\n' +
-          'For full VPN protection, configure Private DNS in your Android settings.',
-          [
-            { text: 'Configure DNS', onPress: () => this.openPrivateDnsSettings() },
-            { text: 'Continue', onPress: () => resolve(true) },
-          ]
-        );
-        return;
-      }
-      try {
-        VpnModule.prepareVpn((granted: boolean) => {
-          resolve(granted);
-        });
-      } catch {
-        resolve(false);
-      }
-    });
-  }
-
-  // Connect to VPN with specified DNS
-  async connect(dnsServer: string = '1.1.1.1', vpnAddress: string = '10.0.0.2'): Promise<VpnConnectionResult> {
-    if (!this._isNativeAvailable) {
-      // Simulate connection and show DNS setup instructions
-      this._simulatedConnection = true;
-      this._simulatedDns = dnsServer;
-      
-      this.showDnsInstructions(dnsServer);
-      
-      return { connected: true, dnsServer };
-    }
-    try {
-      return await VpnModule.connect(dnsServer, vpnAddress);
-    } catch {
-      return { connected: false, dnsServer: '' };
-    }
-  }
-
-  // Disconnect VPN
-  async disconnect(): Promise<boolean> {
-    if (!this._isNativeAvailable) {
-      this._simulatedConnection = false;
-      this._simulatedDns = '';
-      return true;
-    }
-    try {
-      return await VpnModule.disconnect();
+      return await VpnModule.prepareVpn();
     } catch {
       return false;
     }
   }
 
-  // Set private DNS (Android 9+)
-  async setPrivateDns(hostname: string): Promise<PrivateDnsResult> {
-    const instructions = `Go to Settings > Network & Internet > Private DNS and enter: ${hostname}`;
-    
+  async connect(dnsServer: string, vpnAddress: string): Promise<VpnConnectionResult> {
     if (!this._isNativeAvailable) {
-      this.showDnsInstructions(hostname);
-      return { hostname, manualConfigRequired: true, instructions };
+      return { connected: false, dnsServer: '' };
+    }
+    try {
+      return await VpnModule.connectVpn(dnsServer, vpnAddress);
+    } catch {
+      return { connected: false, dnsServer: '' };
+    }
+  }
+
+  async disconnect(): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await VpnModule.disconnectVpn();
+    } catch {
+      return false;
+    }
+  }
+
+  async isConnected(): Promise<boolean> {
+    if (!this._isNativeAvailable) return false;
+    try {
+      return await VpnModule.isVpnConnected();
+    } catch {
+      return false;
+    }
+  }
+
+  async getCurrentDns(): Promise<string> {
+    if (!this._isNativeAvailable) return '';
+    try {
+      return await VpnModule.getCurrentDns();
+    } catch {
+      return '';
+    }
+  }
+
+  async setPrivateDns(hostname: string): Promise<PrivateDnsResult> {
+    if (!this._isNativeAvailable) {
+      return {
+        hostname,
+        manualConfigRequired: true,
+        instructions: `Go to Settings > Network & Internet > Private DNS > Private DNS provider hostname and enter: ${hostname}`,
+      };
     }
     try {
       return await VpnModule.setPrivateDns(hostname);
     } catch {
-      return { hostname, manualConfigRequired: true, instructions };
+      return { hostname, manualConfigRequired: true, instructions: 'Manual configuration required' };
     }
   }
 
-  // Get DNS over HTTPS URL for a provider
-  async getDnsOverHttpsUrl(provider: string): Promise<string> {
-    const urls: Record<string, string> = {
-      cloudflare: 'https://cloudflare-dns.com/dns-query',
-      google: 'https://dns.google/dns-query',
-      quad9: 'https://dns.quad9.net/dns-query',
-      opendns: 'https://doh.opendns.com/dns-query',
-      adguard: 'https://dns.adguard.com/dns-query',
-      cleanbrowsing: 'https://doh.cleanbrowsing.org/doh/security-filter/',
-    };
-    
-    if (!this._isNativeAvailable) {
-      return urls[provider.toLowerCase()] || '';
-    }
-    try {
-      return await VpnModule.getDnsOverHttpsUrl(provider);
-    } catch {
-      return urls[provider.toLowerCase()] || '';
-    }
-  }
-
-  // Test DNS resolution (works without native module)
-  async testDns(hostname: string = 'cloudflare.com'): Promise<{ success: boolean; latency: number }> {
-    const startTime = Date.now();
-    try {
-      const response = await fetch(`https://${hostname}`, { method: 'HEAD' });
-      const latency = Date.now() - startTime;
-      return { success: response.ok, latency };
-    } catch {
-      return { success: false, latency: -1 };
-    }
-  }
-
-  // Event listeners (only work in native mode)
-  onConnected(callback: (data: { dnsServer: string }) => void) {
+  onConnected(callback: (data: VpnConnectionResult) => void) {
     if (!vpnEmitter) return { remove: () => {} };
     try {
       const subscription = vpnEmitter.addListener('onVpnConnected', callback);
@@ -264,24 +166,9 @@ class VpnService {
     }
   }
 
-  onPermissionResult(callback: (granted: boolean) => void) {
-    if (!vpnEmitter) return { remove: () => {} };
-    try {
-      const subscription = vpnEmitter.addListener('onVpnPermissionResult', (data) => {
-        callback(data.granted);
-      });
-      this.listeners.set('permissionResult', subscription);
-      return subscription;
-    } catch {
-      return { remove: () => {} };
-    }
-  }
-
   removeAllListeners() {
     this.listeners.forEach((subscription) => {
-      try {
-        subscription.remove();
-      } catch {}
+      try { subscription.remove(); } catch {}
     });
     this.listeners.clear();
   }
