@@ -77,40 +77,11 @@ jobs:
       - name: Patch MainApplication.kt (remove New Architecture entry point)
         run: |
           MAIN_APP=frontend/android/app/src/main/java/com/dphms/secureguard/MainApplication.kt
-          echo "Rewriting $MAIN_APP for old architecture (no NewArch entry point)..."
-          cat > "$MAIN_APP" << 'ENDKOTLIN'
-package com.dphms.secureguard
-
-import android.app.Application
-import com.facebook.react.PackageList
-import com.facebook.react.ReactApplication
-import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactPackage
-import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.soloader.SoLoader
-
-class MainApplication : Application(), ReactApplication {
-  override val reactNativeHost: ReactNativeHost =
-    object : DefaultReactNativeHost(this) {
-      override fun getPackages(): List<ReactPackage> =
-        PackageList(this).packages
-
-      override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
-
-      override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-      override val isNewArchEnabled: Boolean = false
-      override val isHermesEnabled: Boolean = true
-    }
-
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, false)
-  }
-}
-ENDKOTLIN
-          echo "--- Patched MainApplication.kt ---"
+          echo "Rewriting MainApplication.kt for old architecture..."
+          echo "cGFja2FnZSBjb20uZHBobXMuc2VjdXJlZ3VhcmQKCmltcG9ydCBhbmRyb2lkLmFwcC5BcHBsaWNhdGlvbgppbXBvcnQgY29tLmZhY2Vib29rLnJlYWN0LlBhY2thZ2VMaXN0CmltcG9ydCBjb20uZmFjZWJvb2sucmVhY3QuUmVhY3RBcHBsaWNhdGlvbgppbXBvcnQgY29tLmZhY2Vib29rLnJlYWN0LlJlYWN0TmF0aXZlSG9zdAppbXBvcnQgY29tLmZhY2Vib29rLnJlYWN0LlJlYWN0UGFja2FnZQppbXBvcnQgY29tLmZhY2Vib29rLnJlYWN0LmRlZmF1bHRzLkRlZmF1bHRSZWFjdE5hdGl2ZUhvc3QKaW1wb3J0IGNvbS5mYWNlYm9vay5zb2xvYWRlci5Tb0xvYWRlcgoKY2xhc3MgTWFpbkFwcGxpY2F0aW9uIDogQXBwbGljYXRpb24oKSwgUmVhY3RBcHBsaWNhdGlvbiB7CiAgb3ZlcnJpZGUgdmFsIHJlYWN0TmF0aXZlSG9zdDogUmVhY3ROYXRpdmVIb3N0ID0KICAgIG9iamVjdCA6IERlZmF1bHRSZWFjdE5hdGl2ZUhvc3QodGhpcykgewogICAgICBvdmVycmlkZSBmdW4gZ2V0UGFja2FnZXMoKTogTGlzdDxSZWFjdFBhY2thZ2U+ID0KICAgICAgICBQYWNrYWdlTGlzdCh0aGlzKS5wYWNrYWdlcwoKICAgICAgb3ZlcnJpZGUgZnVuIGdldEpTTWFpbk1vZHVsZU5hbWUoKTogU3RyaW5nID0gIi5leHBvLy52aXJ0dWFsLW1ldHJvLWVudHJ5IgoKICAgICAgb3ZlcnJpZGUgZnVuIGdldFVzZURldmVsb3BlclN1cHBvcnQoKTogQm9vbGVhbiA9IEJ1aWxkQ29uZmlnLkRFQlVHCgogICAgICBvdmVycmlkZSB2YWwgaXNOZXdBcmNoRW5hYmxlZDogQm9vbGVhbiA9IGZhbHNlCiAgICAgIG92ZXJyaWRlIHZhbCBpc0hlcm1lc0VuYWJsZWQ6IEJvb2xlYW4gPSB0cnVlCiAgICB9CgogIG92ZXJyaWRlIGZ1biBvbkNyZWF0ZSgpIHsKICAgIHN1cGVyLm9uQ3JlYXRlKCkKICAgIFNvTG9hZGVyLmluaXQodGhpcywgZmFsc2UpCiAgfQp9Cg==" | base64 -d > "$MAIN_APP"
+          echo "Patched MainApplication.kt (removed NewArch entry point)"
           cat "$MAIN_APP"
+
       - name: Build Debug APK
         working-directory: frontend/android
         env:
