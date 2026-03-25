@@ -1,32 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-  TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  RefreshControl, Alert, TextInput, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const C = {
+  bg: '#0a0a0a', card: '#111', border: '#1e1e1e',
+  green: '#00ff88', blue: '#00aaff', text: '#fff', dim: '#999',
+};
 
-interface DNSPreset {
-  provider: string;
-  name: string;
-  primary: string;
-  secondary: string;
-  description: string;
-}
+const DNS_PRESETS = [
+  { provider: 'cloudflare', name: 'Cloudflare', primary: '1.1.1.1', secondary: '1.0.0.1', description: 'Privacy-first DNS. Fastest in the world.', icon: 'cloud' },
+  { provider: 'google', name: 'Google DNS', primary: '8.8.8.8', secondary: '8.8.4.4', description: 'Reliable and fast public DNS.', icon: 'logo-google' },
+  { provider: 'quad9', name: 'Quad9', primary: '9.9.9.9', secondary: '149.112.112.112', description: 'Security-focused with malware blocking.', icon: 'shield-checkmark' },
+  { provider: 'opendns', name: 'OpenDNS', primary: '208.67.222.222', secondary: '208.67.220.220', description: 'Cisco OpenDNS with content filtering.', icon: 'server' },
+  { provider: 'adguard', name: 'AdGuard DNS', primary: '94.140.14.14', secondary: '94.140.15.15', description: 'Blocks ads and trackers at DNS level.', icon: 'shield' },
+];
+
+const DNS_CONFIG_KEY = 'dns_config';
 
 export default function DNSScreen() {
-  const [deviceId, setDeviceId] = useState('');
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [presets, setPresets] = useState<DNSPreset[]>([]);
   const [selectedProvider, setSelectedProvider] = useState('cloudflare');
   const [dnsOverHttps, setDnsOverHttps] = useState(true);
   const [customMode, setCustomMode] = useState(false);
@@ -34,60 +32,30 @@ export default function DNSScreen() {
   const [customSecondary, setCustomSecondary] = useState('');
   const [currentConfig, setCurrentConfig] = useState<any>(null);
 
-  useEffect(() => {
-    initDevice();
-  }, []);
+  useEffect(() => { loadCurrentConfig(); }, []);
 
-  const initDevice = async () => {
-    let id = await AsyncStorage.getItem('device_id');
-    if (!id) {
-      id = `device_${Date.now()}`;
-      await AsyncStorage.setItem('device_id', id);
-    }
-    setDeviceId(id);
-    loadPresets();
-    loadCurrentConfig(id);
-  };
-
-  const loadPresets = async () => {
+  const loadCurrentConfig = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/dns/presets`);
-      setPresets(response.data);
-    } catch (error) {
-      console.error('Error loading DNS presets:', error);
-    }
-  };
-
-  const loadCurrentConfig = async (id: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/api/dns/config/${id}`);
-      if (response.data) {
-        setCurrentConfig(response.data);
-        setSelectedProvider(response.data.provider);
-        setDnsOverHttps(response.data.dns_over_https);
+      const saved = await AsyncStorage.getItem(DNS_CONFIG_KEY);
+      if (saved) {
+        const config = JSON.parse(saved);
+        setCurrentConfig(config);
+        setSelectedProvider(config.provider);
+        setDnsOverHttps(config.dns_over_https);
       }
-    } catch (error) {
-      console.error('Error loading DNS config:', error);
-    }
+    } catch {}
   };
 
   const applyDNSConfig = async (provider: string, primary: string, secondary: string) => {
-    try {
-      await axios.post(
-        `${API_URL}/api/dns/config?device_id=${deviceId}&primary_dns=${primary}&secondary_dns=${secondary}&provider=${provider}&dns_over_https=${dnsOverHttps}`
-      );
-      Alert.alert('Success', `DNS configured to ${provider === 'custom' ? 'custom servers' : provider}`);
-      await loadCurrentConfig(deviceId);
-      setCustomMode(false);
-    } catch (error) {
-      console.error('Error applying DNS config:', error);
-      Alert.alert('Error', 'Failed to apply DNS configuration');
-    }
-  };
-
-  const selectPreset = (preset: DNSPreset) => {
-    setSelectedProvider(preset.provider);
-    applyDNSConfig(preset.provider, preset.primary, preset.secondary);
+    const config = { provider, primary_dns: primary, secondary_dns: secondary, dns_over_https: dnsOverHttps };
+    await AsyncStorage.setItem(DNS_CONFIG_KEY, JSON.stringify(config));
+    setCurrentConfig(config);
+    setSelectedProvider(provider);
+    Alert.alert(
+      'DNS Configured',
+      `Provider: ${provider.toUpperCase()}\nPrimary: ${primary}\nSecondary: ${secondary}\n\nTo apply on Android:\nSettings > Network & Internet > Private DNS`,
+      [{ text: 'OK' }]
+    );
   };
 
   const applyCustomDNS = () => {
@@ -96,450 +64,210 @@ export default function DNSScreen() {
       return;
     }
     applyDNSConfig('custom', customPrimary, customSecondary);
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadPresets();
-    await loadCurrentConfig(deviceId);
-    setRefreshing(false);
-  };
-
-  const getProviderIcon = (provider: string) => {
-    const icons: { [key: string]: any } = {
-      cloudflare: 'cloud',
-      google: 'logo-google',
-      quad9: 'shield',
-      opendns: 'server',
-    };
-    return icons[provider] || 'globe';
+    setCustomMode(false);
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>DNS Manager</Text>
         <TouchableOpacity
           style={[styles.dohBadge, dnsOverHttps && styles.dohBadgeActive]}
           onPress={() => setDnsOverHttps(!dnsOverHttps)}
         >
-          <Ionicons name={dnsOverHttps ? 'lock-closed' : 'lock-open'} size={14} color={dnsOverHttps ? '#00ff88' : '#999'} />
+          <Ionicons name={dnsOverHttps ? 'lock-closed' : 'lock-open'} size={13} color={dnsOverHttps ? C.green : '#666'} />
           <Text style={[styles.dohText, dnsOverHttps && styles.dohTextActive]}>DoH</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView
         style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00ff88" />
-        }
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadCurrentConfig(); setRefreshing(false); }} tintColor={C.green} />}
       >
-        {/* Current Config */}
         {currentConfig && (
           <View style={styles.currentCard}>
             <View style={styles.currentHeader}>
               <Text style={styles.currentTitle}>Active Configuration</Text>
-              <Ionicons name="checkmark-circle" size={24} color="#00ff88" />
+              <Ionicons name="checkmark-circle" size={22} color={C.green} />
             </View>
-            <View style={styles.currentInfo}>
-              <View style={styles.currentRow}>
-                <Text style={styles.currentLabel}>Provider:</Text>
-                <Text style={styles.currentValue}>{currentConfig.provider.toUpperCase()}</Text>
-              </View>
-              <View style={styles.currentRow}>
-                <Text style={styles.currentLabel}>Primary:</Text>
-                <Text style={styles.currentValue}>{currentConfig.primary_dns}</Text>
-              </View>
-              <View style={styles.currentRow}>
-                <Text style={styles.currentLabel}>Secondary:</Text>
-                <Text style={styles.currentValue}>{currentConfig.secondary_dns}</Text>
-              </View>
-              <View style={styles.currentRow}>
-                <Text style={styles.currentLabel}>DNS over HTTPS:</Text>
-                <Text style={styles.currentValue}>{currentConfig.dns_over_https ? 'Enabled' : 'Disabled'}</Text>
-              </View>
+            <View style={styles.currentRows}>
+              {[
+                { label: 'Provider', value: currentConfig.provider?.toUpperCase() },
+                { label: 'Primary DNS', value: currentConfig.primary_dns },
+                { label: 'Secondary DNS', value: currentConfig.secondary_dns },
+                { label: 'DNS over HTTPS', value: currentConfig.dns_over_https ? 'Enabled' : 'Disabled' },
+              ].map(({ label, value }) => (
+                <View key={label} style={styles.currentRow}>
+                  <Text style={styles.currentLabel}>{label}</Text>
+                  <Text style={styles.currentValue}>{value}</Text>
+                </View>
+              ))}
             </View>
           </View>
         )}
 
-        {/* Info Card */}
         <View style={styles.infoCard}>
-          <Ionicons name="information-circle" size={24} color="#00aaff" />
+          <Ionicons name="information-circle" size={20} color={C.blue} />
           <Text style={styles.infoText}>
-            DNS configuration helps improve privacy and security. DNS over HTTPS (DoH) encrypts your DNS queries.
+            DNS over HTTPS encrypts your DNS queries preventing ISP surveillance and man-in-the-middle attacks.
           </Text>
         </View>
 
-        {/* DNS Presets */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>DNS Providers</Text>
-          {presets.map((preset) => (
+          <Text style={styles.sectionTitle}>DNS PROVIDERS</Text>
+          {DNS_PRESETS.map((preset) => (
             <TouchableOpacity
               key={preset.provider}
-              style={[
-                styles.presetCard,
-                selectedProvider === preset.provider && styles.presetCardActive,
-              ]}
-              onPress={() => selectPreset(preset)}
+              style={[styles.presetCard, selectedProvider === preset.provider && styles.presetCardActive]}
+              onPress={() => applyDNSConfig(preset.provider, preset.primary, preset.secondary)}
             >
-              <View style={styles.presetLeft}>
-                <View style={styles.presetIcon}>
-                  <Ionicons name={getProviderIcon(preset.provider)} size={28} color="#00ff88" />
-                </View>
-                <View style={styles.presetInfo}>
-                  <Text style={styles.presetName}>{preset.name}</Text>
-                  <Text style={styles.presetDesc}>{preset.description}</Text>
-                  <View style={styles.presetDNS}>
-                    <Text style={styles.presetDNSText}>{preset.primary}</Text>
-                    <Text style={styles.presetDNSSeparator}>•</Text>
-                    <Text style={styles.presetDNSText}>{preset.secondary}</Text>
-                  </View>
+              <View style={styles.presetIcon}>
+                <Ionicons name={preset.icon as any} size={24} color={selectedProvider === preset.provider ? C.green : C.dim} />
+              </View>
+              <View style={styles.presetInfo}>
+                <Text style={styles.presetName}>{preset.name}</Text>
+                <Text style={styles.presetDesc}>{preset.description}</Text>
+                <View style={styles.presetDnsRow}>
+                  <Text style={styles.presetDns}>{preset.primary}</Text>
+                  <Text style={styles.presetDnsSep}>•</Text>
+                  <Text style={styles.presetDns}>{preset.secondary}</Text>
                 </View>
               </View>
               {selectedProvider === preset.provider && (
-                <Ionicons name="checkmark-circle" size={24} color="#00ff88" />
+                <Ionicons name="checkmark-circle" size={22} color={C.green} />
               )}
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Custom DNS */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.customHeader}
-            onPress={() => setCustomMode(!customMode)}
-          >
-            <Text style={styles.sectionTitle}>Custom DNS</Text>
-            <Ionicons
-              name={customMode ? 'chevron-up' : 'chevron-down'}
-              size={24}
-              color="#999"
-            />
+          <TouchableOpacity style={styles.customToggle} onPress={() => setCustomMode(!customMode)}>
+            <Text style={styles.sectionTitle}>CUSTOM DNS</Text>
+            <Ionicons name={customMode ? 'chevron-up' : 'chevron-down'} size={20} color={C.dim} />
           </TouchableOpacity>
-
           {customMode && (
             <View style={styles.customForm}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Primary DNS Server</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 1.1.1.1"
-                  placeholderTextColor="#666"
-                  value={customPrimary}
-                  onChangeText={setCustomPrimary}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Secondary DNS Server</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 1.0.0.1"
-                  placeholderTextColor="#666"
-                  value={customSecondary}
-                  onChangeText={setCustomSecondary}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <TouchableOpacity style={styles.applyButton} onPress={applyCustomDNS}>
-                <Ionicons name="checkmark" size={20} color="#000" />
-                <Text style={styles.applyButtonText}>APPLY CUSTOM DNS</Text>
+              {[
+                { label: 'Primary DNS Server', value: customPrimary, setter: setCustomPrimary, placeholder: 'e.g., 1.1.1.1' },
+                { label: 'Secondary DNS Server', value: customSecondary, setter: setCustomSecondary, placeholder: 'e.g., 1.0.0.1' },
+              ].map(({ label, value, setter, placeholder }) => (
+                <View key={label} style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={placeholder}
+                    placeholderTextColor="#555"
+                    value={value}
+                    onChangeText={setter}
+                    keyboardType="numeric"
+                  />
+                </View>
+              ))}
+              <TouchableOpacity style={styles.applyBtn} onPress={applyCustomDNS}>
+                <Ionicons name="checkmark" size={18} color={C.bg} />
+                <Text style={styles.applyBtnText}>APPLY CUSTOM DNS</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* Features */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Security Features</Text>
-          <View style={styles.featureCard}>
-            <Ionicons name="lock-closed" size={24} color="#00ff88" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>DNS over HTTPS (DoH)</Text>
-              <Text style={styles.featureDesc}>Encrypted DNS queries for privacy</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.toggle, dnsOverHttps && styles.toggleActive]}
-              onPress={() => setDnsOverHttps(!dnsOverHttps)}
-            >
-              <View style={[styles.toggleThumb, dnsOverHttps && styles.toggleThumbActive]} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.featureCard}>
-            <Ionicons name="shield-checkmark" size={24} color="#00aaff" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>Malware Protection</Text>
-              <Text style={styles.featureDesc}>Block malicious domains</Text>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
-          </View>
-
-          <View style={styles.featureCard}>
-            <Ionicons name="flash" size={24} color="#ff9900" />
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureName}>Fast DNS Resolution</Text>
-              <Text style={styles.featureDesc}>Optimized for speed</Text>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: '#00ff88' }]} />
+          <Text style={styles.sectionTitle}>HOW TO CONFIGURE ON ANDROID</Text>
+          <View style={styles.stepsCard}>
+            {[
+              'Open Settings on your device',
+              'Go to Network & Internet',
+              'Tap "Private DNS"',
+              'Select "Private DNS provider hostname"',
+              'Enter the DoH hostname (e.g., 1dot1dot1dot1.cloudflare-dns.com)',
+              'Tap Save',
+            ].map((step, i) => (
+              <View key={i} style={styles.step}>
+                <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+                <Text style={styles.stepText}>{step}</Text>
+              </View>
+            ))}
           </View>
         </View>
+
+        <View style={{ height: 80 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
+  container: { flex: 1, backgroundColor: C.bg },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
+  headerTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: C.text },
   dohBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#1a1a1a', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: '#2a2a2a',
   },
-  dohBadgeActive: {
-    backgroundColor: '#00ff8820',
-    borderWidth: 1,
-    borderColor: '#00ff88',
-  },
-  dohText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#999',
-    letterSpacing: 1,
-  },
-  dohTextActive: {
-    color: '#00ff88',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
+  dohBadgeActive: { backgroundColor: '#00ff8810', borderColor: '#00ff8830' },
+  dohText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#666', letterSpacing: 0.5 },
+  dohTextActive: { color: C.green },
+  content: { flex: 1 },
   currentCard: {
-    backgroundColor: '#1a1a1a',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#00ff88',
+    backgroundColor: '#00ff8808', margin: 16, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: '#00ff8825',
   },
-  currentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  currentTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  currentInfo: {
-    gap: 12,
-  },
-  currentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  currentLabel: {
-    fontSize: 13,
-    color: '#999',
-  },
-  currentValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#fff',
-  },
+  currentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  currentTitle: { fontSize: 14, fontFamily: 'Inter_700Bold', color: C.green },
+  currentRows: { gap: 8 },
+  currentRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  currentLabel: { fontSize: 12, color: '#888', fontFamily: 'Inter_400Regular' },
+  currentValue: { fontSize: 12, color: C.text, fontFamily: 'Inter_500Medium' },
   infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#00aaff20',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#00aaff',
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#00aaff08', marginHorizontal: 16, marginBottom: 20,
+    padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#00aaff25',
   },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#00aaff',
-    lineHeight: 18,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
-  },
+  infoText: { flex: 1, fontSize: 12, color: '#aaa', fontFamily: 'Inter_400Regular', lineHeight: 18 },
+  section: { paddingHorizontal: 16, marginBottom: 20 },
+  sectionTitle: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#555', letterSpacing: 1.5, marginBottom: 10 },
   presetCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: C.border, gap: 12,
   },
-  presetCardActive: {
-    borderColor: '#00ff88',
-  },
-  presetLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
+  presetCardActive: { borderColor: '#00ff8840', backgroundColor: '#00ff8806' },
   presetIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#0a0a0a',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 46, height: 46, borderRadius: 12,
+    backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center',
   },
-  presetInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  presetName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  presetDesc: {
-    fontSize: 12,
-    color: '#999',
-  },
-  presetDNS: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  presetDNSText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#00ff88',
-  },
-  presetDNSSeparator: {
-    fontSize: 11,
-    color: '#666',
-  },
-  customHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  customForm: {
-    gap: 16,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#999',
-  },
+  presetInfo: { flex: 1 },
+  presetName: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: C.text, marginBottom: 2 },
+  presetDesc: { fontSize: 11, color: C.dim, fontFamily: 'Inter_400Regular', marginBottom: 5 },
+  presetDnsRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  presetDns: { fontSize: 11, color: '#666', fontFamily: 'Inter_400Regular' },
+  presetDnsSep: { fontSize: 11, color: '#333' },
+  customToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  customForm: { backgroundColor: C.card, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: C.border, gap: 14 },
+  inputGroup: { gap: 6 },
+  inputLabel: { fontSize: 12, color: C.dim, fontFamily: 'Inter_500Medium' },
   input: {
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    color: '#fff',
+    backgroundColor: '#1a1a1a', borderRadius: 10, padding: 12,
+    color: C.text, fontSize: 14, fontFamily: 'Inter_400Regular',
+    borderWidth: 1, borderColor: '#2a2a2a',
   },
-  applyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00ff88',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginTop: 8,
+  applyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: C.green, borderRadius: 10, paddingVertical: 12,
   },
-  applyButtonText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
+  applyBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: C.bg, letterSpacing: 0.5 },
+  stepsCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: C.border, gap: 12 },
+  step: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepNum: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#00ff8820', alignItems: 'center', justifyContent: 'center',
   },
-  featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    gap: 12,
-  },
-  featureInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  featureName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  featureDesc: {
-    fontSize: 12,
-    color: '#999',
-  },
-  toggle: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#333',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleActive: {
-    backgroundColor: '#00ff88',
-  },
-  toggleThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  toggleThumbActive: {
-    alignSelf: 'flex-end',
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
+  stepNumText: { fontSize: 12, fontFamily: 'Inter_700Bold', color: C.green },
+  stepText: { flex: 1, fontSize: 12, color: '#ccc', fontFamily: 'Inter_400Regular' },
 });
