@@ -1,10 +1,9 @@
-// Threat Database Service - Fetches from GitHub repository
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THREAT_DB_URL = 'https://raw.githubusercontent.com/ranicola69-cpu/secureguard-threat-db/main/threats.json';
 const CACHE_KEY = 'threat_database';
 const CACHE_TIMESTAMP_KEY = 'threat_database_timestamp';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
 export interface ThreatDefinition {
   package_name: string;
@@ -31,45 +30,56 @@ export interface ThreatDatabase {
   dns_blocklists: string[];
 }
 
+const BUILTIN_THREATS: ThreatDefinition[] = [
+  { package_name: 'com.android.enterprise', app_name: 'Enterprise Suite', threat_level: 'high', category: 'enterprise_spyware', description: 'MDM enterprise management software that monitors and controls device', is_system: true, can_remove: false },
+  { package_name: 'com.google.android.gms.policy', app_name: 'Enterprise Policy', threat_level: 'high', category: 'enterprise_spyware', description: 'Google Enterprise Policy enforcer', is_system: true, can_remove: false },
+  { package_name: 'com.tracfone', app_name: 'TracFone Services', threat_level: 'medium', category: 'bloatware', description: 'Carrier bloatware from TracFone', is_system: true, can_remove: false },
+  { package_name: 'com.facebook.system', app_name: 'Facebook System', threat_level: 'medium', category: 'bloatware', description: 'Facebook system-level app with deep OS integration', is_system: true, can_remove: false },
+  { package_name: 'com.facebook.services', app_name: 'Facebook Services', threat_level: 'medium', category: 'bloatware', description: 'Facebook background services tracking activity', is_system: true, can_remove: false },
+  { package_name: 'com.facebook.appmanager', app_name: 'Facebook App Manager', threat_level: 'high', category: 'tracker', description: 'Facebook tracker that phones home with device data', is_system: true, can_remove: false },
+  { package_name: 'com.android.managedprovisioning', app_name: 'Managed Provisioning', threat_level: 'high', category: 'enterprise_spyware', description: 'Device enrollment and management provisioning', is_system: true, can_remove: false },
+  { package_name: 'com.qualcomm.qti.telephonyservice', app_name: 'Qualcomm Telemetry', threat_level: 'medium', category: 'tracker', description: 'Qualcomm chipset telemetry collector', is_system: true, can_remove: false },
+  { package_name: 'com.amazon.appmanager', app_name: 'Amazon App Manager', threat_level: 'medium', category: 'bloatware', description: 'Amazon preloaded app manager', is_system: true, can_remove: false },
+];
+
+const BUILTIN_DB: ThreatDatabase = {
+  version: '1.0.0-builtin',
+  last_updated: new Date().toISOString(),
+  signature_count: BUILTIN_THREATS.length,
+  categories: {
+    enterprise_spyware: { description: 'MDM and enterprise monitoring software', risk_level: 'high' },
+    bloatware: { description: 'Preloaded unwanted software', risk_level: 'medium' },
+    tracker: { description: 'Data collection and tracking software', risk_level: 'high' },
+    adware: { description: 'Advertising software', risk_level: 'low' },
+  },
+  threats: BUILTIN_THREATS,
+  dns_blocklists: ['0.0.0.0 ads.facebook.com', '0.0.0.0 graph.facebook.com'],
+};
+
 class ThreatDatabaseService {
   private database: ThreatDatabase | null = null;
   private lastFetch: number = 0;
 
-  // Fetch threat database from GitHub
   async fetchFromRemote(): Promise<ThreatDatabase | null> {
     try {
-      const response = await fetch(THREAT_DB_URL, {
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      const response = await fetch(THREAT_DB_URL, { headers: { 'Cache-Control': 'no-cache' } });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: ThreatDatabase = await response.json();
-      
-      // Cache the database
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
       await AsyncStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
-      
       this.database = data;
       this.lastFetch = Date.now();
-      
       return data;
     } catch (error) {
-      console.error('Failed to fetch threat database:', error);
+      console.log('Failed to fetch threat database, using built-in:', error);
       return null;
     }
   }
 
-  // Load from cache
   async loadFromCache(): Promise<ThreatDatabase | null> {
     try {
       const cached = await AsyncStorage.getItem(CACHE_KEY);
       const timestamp = await AsyncStorage.getItem(CACHE_TIMESTAMP_KEY);
-      
       if (cached && timestamp) {
         const cacheAge = Date.now() - parseInt(timestamp, 10);
         if (cacheAge < CACHE_DURATION) {
@@ -78,89 +88,55 @@ class ThreatDatabaseService {
           return this.database;
         }
       }
-      
       return null;
     } catch (error) {
-      console.error('Failed to load threat database from cache:', error);
       return null;
     }
   }
 
-  // Get the database (from cache or fetch)
-  async getDatabase(): Promise<ThreatDatabase | null> {
-    // Try cache first
+  async getDatabase(): Promise<ThreatDatabase> {
     const cached = await this.loadFromCache();
-    if (cached) {
-      return cached;
-    }
-    
-    // Fetch from remote
-    return await this.fetchFromRemote();
+    if (cached) return cached;
+    const remote = await this.fetchFromRemote();
+    if (remote) return remote;
+    return BUILTIN_DB;
   }
 
-  // Force update the database
   async updateDatabase(): Promise<{ success: boolean; version?: string; threatCount?: number }> {
     const db = await this.fetchFromRemote();
     if (db) {
-      return {
-        success: true,
-        version: db.version,
-        threatCount: db.threats.length,
-      };
+      return { success: true, version: db.version, threatCount: db.threats.length };
     }
     return { success: false };
   }
 
-  // Check if a package is a known threat
   async checkPackage(packageName: string): Promise<ThreatDefinition | null> {
     const db = await this.getDatabase();
-    if (!db) return null;
-    
     return db.threats.find(t => t.package_name === packageName) || null;
   }
 
-  // Scan multiple packages
   async scanPackages(packageNames: string[]): Promise<ThreatDefinition[]> {
     const db = await this.getDatabase();
-    if (!db) return [];
-    
     return db.threats.filter(t => packageNames.includes(t.package_name));
   }
 
-  // Get all threats by category
   async getThreatsByCategory(category: string): Promise<ThreatDefinition[]> {
     const db = await this.getDatabase();
-    if (!db) return [];
-    
     return db.threats.filter(t => t.category === category);
   }
 
-  // Get all threats by level
   async getThreatsByLevel(level: 'critical' | 'high' | 'medium' | 'low'): Promise<ThreatDefinition[]> {
     const db = await this.getDatabase();
-    if (!db) return [];
-    
     return db.threats.filter(t => t.threat_level === level);
   }
 
-  // Get DNS blocklist
   async getDnsBlocklist(): Promise<string[]> {
     const db = await this.getDatabase();
-    if (!db) return [];
-    
     return db.dns_blocklists;
   }
 
-  // Get database info
-  async getDatabaseInfo(): Promise<{
-    version: string;
-    lastUpdated: string;
-    signatureCount: number;
-    categories: string[];
-  } | null> {
+  async getDatabaseInfo(): Promise<{ version: string; lastUpdated: string; signatureCount: number; categories: string[] } | null> {
     const db = await this.getDatabase();
-    if (!db) return null;
-    
     return {
       version: db.version,
       lastUpdated: db.last_updated,
@@ -169,7 +145,6 @@ class ThreatDatabaseService {
     };
   }
 
-  // Clear cache
   async clearCache(): Promise<void> {
     await AsyncStorage.removeItem(CACHE_KEY);
     await AsyncStorage.removeItem(CACHE_TIMESTAMP_KEY);
