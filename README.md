@@ -71,5 +71,5 @@
 
 | App | Description | Link |
 |-----|-------------|------|
-| [Arbiter's Grammar](https://github.com/ranicola69-cpu/arbiters-grammar) | 30 laws of manipulation and control | [Web Version](https://dphms-apps.replit.app/arbiters-grammar/) |
+| [Arbiter's Grammar](https://github.com/ranicola69-cpu/arbiters-grammar) | 30 laws of manipulation and control | [Web Version](https://secure-guard.replit.app/arbiters-grammar/) |
 | [BRINGWAR Gaming Rewards](https://github.com/ranicola69-cpu/bringwar-gaming-rewards) | Earn and redeem rewards | [APK v1.5.0](https://github.com/ranicola69-cpu/bringwar-gaming-rewards/releases/download/v1.5.0/BRINGWAR-Gaming-Rewards-v1.5.0.apk) |
