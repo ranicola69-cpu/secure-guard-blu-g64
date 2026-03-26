@@ -34,7 +34,15 @@
           "origin": "https://replit.com/"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "newArchEnabled": true
+          }
+        }
+      ]
     ]
   }
 }
