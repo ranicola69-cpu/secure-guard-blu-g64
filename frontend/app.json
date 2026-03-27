@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secure Guard",
     "slug": "secure-guard",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secure-guard",
@@ -17,7 +17,7 @@
       "supportsTablet": false
     },
     "android": {
-      "versionCode": 10,
+      "versionCode": 2,
       "package": "com.dphms.secureguard",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
